@@ -1,3 +1,5 @@
 # DC-Bot
 
-Der soll alles können :D
+The bot do Everthing thats the Goal:D
+
+you Start the bot with npm run watch
