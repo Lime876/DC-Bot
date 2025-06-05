@@ -1,31 +1,56 @@
 const fs = require('fs');
 const path = require('path');
 
-const logPath = path.join(__dirname, '../data/logchannels.json');
+const logConfigPath = path.join(__dirname, '../data/logchannels.json');
+const ticketConfigPath = path.join(__dirname, '../data/ticketConfig.json');
 
-/**
- * Ruft die Logkanal-ID für eine Gilde ab.
- *
- * @param {string} guildId - Die ID der Gilde, für die der Logkanal abgerufen werden soll.
- * @returns {string|undefined} Die Kanal-ID des Logkanals oder undefined, wenn keiner gefunden wurde.
- */
 function getLogChannelId(guildId) {
-  try {
-    if (!fs.existsSync(logPath)) {
-      console.warn(`Log channel configuration file not found at ${logPath}`);
-      return undefined;
+    if (fs.existsSync(logConfigPath)) {
+        const config = JSON.parse(fs.readFileSync(logConfigPath, 'utf8'));
+        return config[guildId] || null;
     }
-    const logData = JSON.parse(fs.readFileSync(logPath, 'utf8'));
-    const channelId = logData[guildId];
-    if (!channelId) {
-      console.warn(`No log channel configured for guild ID: ${guildId}`);
-      return undefined;
-    }
-    return channelId;
-  } catch (error) {
-    console.error(`Error reading or parsing log channel configuration: ${error.message}`);
-    return undefined;
-  }
+    return null;
 }
 
-module.exports = { getLogChannelId };
+function setLogChannelId(guildId, channelId) {
+    let config = {};
+    if (fs.existsSync(logConfigPath)) {
+        config = JSON.parse(fs.readFileSync(logConfigPath, 'utf8'));
+    }
+    config[guildId] = channelId;
+    fs.writeFileSync(logConfigPath, JSON.stringify(config, null, 2));
+}
+
+function getTicketConfig(guildId) {
+    if (fs.existsSync(ticketConfigPath)) {
+        const config = JSON.parse(fs.readFileSync(ticketConfigPath, 'utf8'));
+        // Wenn ticketConfig.json ein Objekt pro Gilde ist, wie logConfig.json
+        // return config[guildId] || null;
+        // Wenn es ein einzelnes Objekt für das gesamte Setup ist (wie im vorherigen Beispiel)
+        if (config.guildId === guildId) {
+            return config;
+        }
+    }
+    return null;
+}
+
+function setTicketConfig(configData) {
+    // Wenn ticketConfig.json ein Objekt pro Gilde ist
+    /*
+    let config = {};
+    if (fs.existsSync(ticketConfigPath)) {
+        config = JSON.parse(fs.readFileSync(ticketConfigPath, 'utf8'));
+    }
+    config[configData.guildId] = configData;
+    fs.writeFileSync(ticketConfigPath, JSON.stringify(config, null, 2));
+    */
+    // Wenn es ein einzelnes Objekt für das gesamte Setup ist
+    fs.writeFileSync(ticketConfigPath, JSON.stringify(configData, null, 2));
+}
+
+module.exports = {
+    getLogChannelId,
+    setLogChannelId,
+    getTicketConfig,
+    setTicketConfig,
+};
