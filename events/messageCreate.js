@@ -10,8 +10,8 @@ const cooldowns = new Set();
 // XP-Einstellungen (bleiben wie zuvor)
 const BASE_XP_PER_MESSAGE = 10;
 const XP_PER_CHARACTER = 0.5;
-const COOLDOWN_SECONDS = 60;
-const MIN_MESSAGE_LENGTH = 5;
+const COOLDOWN_SECONDS = 30;
+const MIN_MESSAGE_LENGTH = 8;
 
 // Funktion zum Laden/Speichern der Leveldaten (bleibt wie zuvor)
 const loadLevels = () => {
