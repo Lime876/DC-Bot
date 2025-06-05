@@ -1,0 +1,11 @@
+[
+  {
+    "id": "VIP",
+    "name": "Yikes",
+    "description": "Kaufe die Rolle Yikes.",
+    "price": 5000,
+    "emoji": "",
+    "type": "role",
+    "roleId": "1373284506211061871"
+  }
+]
