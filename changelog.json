@@ -1,0 +1,39 @@
+[
+  {
+    "version": "1.0.0",
+    "date": "2024-01-01",
+    "changes": [
+      "Initialer Start des Bots.",
+      "Hinzugefügt: `/ping` Command.",
+      "Hinzugefügt: `/botinfo` Command.",
+      "Hinzugefügt: `/help` Command mit Paginierung."
+    ]
+  },
+  {
+    "version": "1.0.1",
+    "date": "2024-01-15",
+    "changes": [
+      "Hinzugefügt: `/serverinfo` Command.",
+      "Fehlerbehebung bei der Bot-Latenzanzeige.",
+      "Optimierung der Bot-Startzeit."
+    ]
+  },
+  {
+    "version": "1.0.2",
+    "date": "2024-02-01",
+    "changes": [
+      "Hinzugefügt: `/ticket-setup` Command für das Ticket-System.",
+      "Verbesserte Fehlerbehandlung für Slash-Commands.",
+      "Aktualisierte Discord.js-Version."
+    ]
+  },
+  {
+    "version": "1.0.3",
+    "date": "2024-02-15",
+    "changes": [
+      "Hinzugefügt: `/rejoin-rollen` Command.",
+      "Hinzugefügt: `/reactionsetup` Command.",
+      "Kleine Verbesserungen und Bugfixes."
+    ]
+  }
+]
