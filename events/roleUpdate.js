@@ -1,95 +1,132 @@
-const { Events, EmbedBuilder, AuditLogEvent } = require('discord.js'); // AuditLogEvent hinzugefügt
-const { sendLog } = require('../utils/logger.js');
+// events/guildRoleUpdate.js
+const { Events, EmbedBuilder, AuditLogEvent, TextChannel } = require('discord.js');
 const { getLogChannelId } = require('../utils/config.js'); // Stelle sicher, dass diese Datei korrekt den Log-Kanal liefert
+const { getGuildLanguage, getTranslatedText } = require('../utils/languageUtils');
 
 module.exports = {
-  name: Events.GuildRoleUpdate,
-  async execute(oldRole, newRole, client) { // client-Parameter hinzugefügt, falls benötigt (z.B. für sendLog über client)
-    const changes = [];
-    let responsibleUser = null; // Variable, um den verantwortlichen Benutzer zu speichern
-
-    // Versuche, den Audit Log Eintrag für die Änderung zu finden
-    // Dies funktioniert nicht immer zuverlässig, da Audit Log Einträge verzögert sein können oder es mehrere in kurzer Zeit gibt.
-    try {
-        const fetchedLogs = await newRole.guild.fetchAuditLogs({
-            limit: 1,
-            type: AuditLogEvent.RoleUpdate,
-        });
-        const roleUpdateLog = fetchedLogs.entries.find(
-            auditLog =>
-                auditLog.target.id === newRole.id &&
-                auditLog.action === AuditLogEvent.RoleUpdate &&
-                Date.now() - auditLog.createdTimestamp < 5000 // Suche nach Einträgen der letzten 5 Sekunden
-        );
-
-        if (roleUpdateLog) {
-            responsibleUser = roleUpdateLog.executor;
+    name: Events.GuildRoleUpdate,
+    async execute(oldRole, newRole, client) {
+        // Ignoriere DM-Kontexte (Rollen existieren nur in Gilden)
+        if (!newRole.guild) {
+            console.log(`[RoleUpdate DEBUG] Rolle ID ${newRole.id}: Ignoriert (keine Gilde).`);
+            return;
         }
-    } catch (error) {
-        console.error('Fehler beim Abrufen des Audit Logs für Rollen-Update:', error);
-    }
 
+        console.log(`[RoleUpdate DEBUG] Event ausgelöst für Rolle ID: ${newRole.id}, Name: ${newRole.name}.`);
 
-    if (oldRole.name !== newRole.name) changes.push(`**Name**: \`${oldRole.name}\` → \`${newRole.name}\``);
-    if (oldRole.color !== newRole.color) changes.push(`**Farbe**: \`#${oldRole.color.toString(16).padStart(6, '0')}\` → \`#${newRole.color.toString(16).padStart(6, '0')}\``); // Farben immer 6-stellig formatieren
-    if (oldRole.hoist !== newRole.hoist) changes.push(`**Separater Anzeige** (Oben in der Liste): \`${oldRole.hoist ? 'Ja' : 'Nein'}\` → \`${newRole.hoist ? 'Ja' : 'Nein'}\``); // Verständlichere Beschriftung
-    if (oldRole.mentionable !== newRole.mentionable) changes.push(`**Erwähnbar**: \`${oldRole.mentionable ? 'Ja' : 'Nein'}\` → \`${newRole.mentionable ? 'Ja' : 'Nein'}\``); // Verständlichere Beschriftung
-    if (oldRole.position !== newRole.position) changes.push(`**Position**: \`${oldRole.position}\` → \`${newRole.position}\``);
-    if (oldRole.managed !== newRole.managed) changes.push(`**Vom Bot/Integration verwaltet**: \`${oldRole.managed ? 'Ja' : 'Nein'}\` → \`${newRole.managed ? 'Ja' : 'Nein'}\``); // Verständlichere Beschriftung
-    if (oldRole.tags?.botId !== newRole.tags?.botId) changes.push(`**Bot-ID (verbunden)**: \`${oldRole.tags?.botId || 'Keine'}\` → \`${newRole.tags?.botId || 'Keine'}\``);
-    if (oldRole.tags?.integrationId !== newRole.tags?.integrationId) changes.push(`**Integration-ID (verbunden)**: \`${oldRole.tags?.integrationId || 'Keine'}\` → \`${newRole.tags?.integrationId || 'Keine'}\``);
+        const lang = getGuildLanguage(newRole.guild.id);
+        const logChannelId = getLogChannelId(newRole.guild.id, 'role_update'); // Verwende 'role_update' als Log-Typ
 
-
-    // Detaillierte Berechtigungsänderungen
-    if (oldRole.permissions.bitfield !== newRole.permissions.bitfield) {
-        const oldPerms = oldRole.permissions.toArray();
-        const newPerms = newRole.permissions.toArray();
-
-        const added = newPerms.filter(perm => !oldPerms.includes(perm));
-        const removed = oldPerms.filter(perm => !newPerms.includes(perm));
-
-        if (added.length) {
-            changes.push(`**➕ Hinzugefügte Berechtigungen**:\n\`\`\`\n${added.join(', ')}\n\`\`\``);
+        if (!logChannelId) {
+            console.log(`[RoleUpdate DEBUG] Rolle ID ${newRole.id}: Kein Log-Kanal für 'role_update' in Gilde ${newRole.guild.id} konfiguriert.`);
+            return;
         }
-        if (removed.length) {
-            changes.push(`**➖ Entfernte Berechtigungen**:\n\`\`\`\n${removed.join(', ')}\n\`\`\``);
+
+        let logChannel;
+        try {
+            logChannel = await newRole.guild.channels.fetch(logChannelId);
+            if (!logChannel || !(logChannel instanceof TextChannel)) {
+                console.warn(`[RoleUpdate] Konfigurierter Log-Kanal ${logChannelId} in Gilde ${newRole.guild.name} ist kein Textkanal oder nicht mehr vorhanden.`);
+                return;
+            }
+        } catch (error) {
+            console.error(`[RoleUpdate] Fehler beim Abrufen des Log-Kanals ${logChannelId}:`, error);
+            return;
         }
-    }
 
-    if (!changes.length) return; // Wenn keine Änderungen erkannt wurden, beenden
+        const changes = [];
+        let responsibleUser = null; // Variable, um den verantwortlichen Benutzer zu speichern
 
-    const embed = new EmbedBuilder()
-      .setTitle('🔧 Rolle aktualisiert')
-      .setDescription(`**Rolle:** ${newRole.name} (<@&${newRole.id}>)`)
-      .addFields(
-        { name: 'Änderungen', value: changes.join('\n') }
-      )
-      .setColor(0xFFA500) // Eine passende Farbe für Updates (Orange)
-      .setTimestamp();
+        // Versuche, den Audit Log Eintrag für die Änderung zu finden
+        try {
+            const fetchedLogs = await newRole.guild.fetchAuditLogs({
+                limit: 1,
+                type: AuditLogEvent.RoleUpdate,
+            });
+            const roleUpdateLog = fetchedLogs.entries.find(
+                auditLog =>
+                    auditLog.target.id === newRole.id &&
+                    auditLog.action === AuditLogEvent.RoleUpdate &&
+                    Date.now() - auditLog.createdTimestamp < 5000 // Suche nach Einträgen der letzten 5 Sekunden
+            );
 
-    if (responsibleUser) {
-        embed.setFooter({
-            text: `Ausgeführt von ${responsibleUser.tag}`,
-            iconURL: responsibleUser.displayAvatarURL(),
-        });
-    } else {
-        embed.setFooter({
-            text: 'Verantwortlicher Benutzer konnte nicht ermittelt werden (Audit Log möglicherweise verzögert oder nicht verfügbar).',
-        });
-    }
+            if (roleUpdateLog) {
+                responsibleUser = roleUpdateLog.executor;
+            }
+        } catch (error) {
+            console.error('[RoleUpdate] Fehler beim Abrufen des Audit Logs für Rollen-Update:', error);
+        }
 
-    const logChannelId = getLogChannelId(newRole.guild.id);
-    if (logChannelId) {
-      const logChannel = newRole.guild.channels.cache.get(logChannelId);
-      if (logChannel) {
-        await logChannel.send({ embeds: [embed] }).catch(error => {
-          console.error(`Konnte Log-Nachricht nicht in Kanal ${logChannelId} senden:`, error);
-        });
-      } else {
-          console.warn(`Log-Kanal mit ID ${logChannelId} nicht gefunden.`);
-      }
-    } else {
-        console.warn(`Kein Log-Kanal für Gilde ${newRole.guild.name} (${newRole.guild.id}) konfiguriert.`);
-    }
-  },
+        const yesText = getTranslatedText(lang, 'general.YES');
+        const noText = getTranslatedText(lang, 'general.NO');
+        const noneText = getTranslatedText(lang, 'general.NONE');
+        const notAvailableText = getTranslatedText(lang, 'general.NOT_AVAILABLE');
+
+
+        if (oldRole.name !== newRole.name) changes.push(`**${getTranslatedText(lang, 'role_update.LOG_FIELD_NAME')}**: \`${oldRole.name}\` → \`${newRole.name}\``);
+        if (oldRole.color !== newRole.color) changes.push(`**${getTranslatedText(lang, 'role_update.LOG_FIELD_COLOR')}**: \`#${oldRole.color.toString(16).padStart(6, '0').toUpperCase()}\` → \`#${newRole.color.toString(16).padStart(6, '0').toUpperCase()}\``);
+        if (oldRole.hoist !== newRole.hoist) changes.push(`**${getTranslatedText(lang, 'role_update.LOG_FIELD_HOIST')}**: \`${oldRole.hoist ? yesText : noText}\` → \`${newRole.hoist ? yesText : noText}\``);
+        if (oldRole.mentionable !== newRole.mentionable) changes.push(`**${getTranslatedText(lang, 'role_update.LOG_FIELD_MENTIONABLE')}**: \`${oldRole.mentionable ? yesText : noText}\` → \`${newRole.mentionable ? yesText : noText}\``);
+        if (oldRole.position !== newRole.position) changes.push(`**${getTranslatedText(lang, 'role_update.LOG_FIELD_POSITION')}**: \`${oldRole.position}\` → \`${newRole.position}\``);
+        if (oldRole.managed !== newRole.managed) changes.push(`**${getTranslatedText(lang, 'role_update.LOG_FIELD_MANAGED')}**: \`${oldRole.managed ? yesText : noText}\` → \`${newRole.managed ? yesText : noText}\``);
+        if (oldRole.tags?.botId !== newRole.tags?.botId) changes.push(`**${getTranslatedText(lang, 'role_update.LOG_FIELD_BOT_ID')}**: \`${oldRole.tags?.botId || noneText}\` → \`${newRole.tags?.botId || noneText}\``);
+        if (oldRole.tags?.integrationId !== newRole.tags?.integrationId) changes.push(`**${getTranslatedText(lang, 'role_update.LOG_FIELD_INTEGRATION_ID')}**: \`${oldRole.tags?.integrationId || noneText}\` → \`${newRole.tags?.integrationId || noneText}\``);
+
+        // Detaillierte Berechtigungsänderungen
+        if (oldRole.permissions.bitfield !== newRole.permissions.bitfield) {
+            const oldPerms = oldRole.permissions.toArray();
+            const newPerms = newRole.permissions.toArray();
+
+            const added = newPerms.filter(perm => !oldPerms.includes(perm));
+            const removed = oldPerms.filter(perm => !newPerms.includes(perm));
+
+            if (added.length) {
+                changes.push(`**➕ ${getTranslatedText(lang, 'role_update.LOG_FIELD_PERM_ADDED')}**:\n\`\`\`\n${added.join(', ')}\n\`\`\``);
+            }
+            if (removed.length) {
+                changes.push(`**➖ ${getTranslatedText(lang, 'role_update.LOG_FIELD_PERM_REMOVED')}**:\n\`\`\`\n${removed.join(', ')}\n\`\`\``);
+            }
+        }
+
+        if (!changes.length) {
+            console.log(`[RoleUpdate DEBUG] Rolle ID ${newRole.id}: Keine Änderungen erkannt.`);
+            return; // Wenn keine Änderungen erkannt wurden, beenden
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(getTranslatedText(lang, 'role_update.LOG_TITLE'))
+            .setDescription(getTranslatedText(lang, 'role_update.LOG_DESCRIPTION', {
+                roleName: newRole.name,
+                roleMention: newRole.toString(),
+                roleId: newRole.id
+            }))
+            .addFields(
+                { name: getTranslatedText(lang, 'role_update.LOG_FIELD_CHANGES'), value: changes.join('\n') }
+            )
+            .setColor(0xFFA500) // Eine passende Farbe für Updates (Orange)
+            .setTimestamp();
+
+        if (responsibleUser) {
+            embed.setFooter({
+                text: getTranslatedText(lang, 'role_update.LOG_FOOTER_EXECUTOR', { userName: responsibleUser.tag || responsibleUser.username }),
+                iconURL: responsibleUser.displayAvatarURL(),
+            });
+        } else {
+            embed.setFooter({
+                text: getTranslatedText(lang, 'role_update.LOG_FOOTER_UNKNOWN_EXECUTOR'),
+            });
+        }
+
+        // --- DEBUG: Dies wird geloggt, wenn der Bot versucht, das Embed zu senden ---
+        console.log(`[RoleUpdate DEBUG] Versuche Embed an Log-Kanal ${logChannel.id} zu senden.`);
+        // --- END DEBUG ---
+
+        try {
+            await logChannel.send({ embeds: [embed] }).catch(error => {
+                console.error(`[RoleUpdate] Konnte Log-Nachricht nicht in Kanal ${logChannelId} senden:`, error);
+            });
+        } catch (error) {
+            console.error(`[RoleUpdate] Schwerwiegender Fehler beim Senden des Embeds an den Log-Kanal:`, error);
+        }
+    },
 };

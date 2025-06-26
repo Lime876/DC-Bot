@@ -1,6 +1,9 @@
 const { Events, EmbedBuilder } = require('discord.js');
 const { getLogChannelId } = require('../utils/config.js'); // Geänderter Pfad
 const { sendLog } = require('../utils/logger.js'); // Geänderter Pfad, Annahme: sendLog existiert
+const fs = require('fs');
+const path = require('path');
+const { getGuildLanguage, getTranslatedText } = require('../utils/languageUtils');
 
 module.exports = {
   name: Events.GuildMemberRemove,

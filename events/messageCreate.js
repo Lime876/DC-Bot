@@ -93,6 +93,9 @@ module.exports = {
                 .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
                 .setTimestamp();
 
+            // Save levels immediately after level up before sending message
+            saveLevels(levelsData);
+
             await message.channel.send({ embeds: [levelUpEmbed] });
             console.log(`${message.author.tag} hat Level ${currentLevel} erreicht!`);
         }
