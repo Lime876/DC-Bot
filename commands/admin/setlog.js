@@ -27,9 +27,6 @@ module.exports = {
                     { name: 'Sprachkanal beigetreten', value: 'voice_join' },
                     { name: 'Sprachkanal verlassen', value: 'voice_leave' },
                     { name: 'Sprachkanal gewechselt', value: 'voice_move' },
-                    { name: 'JTC Kanal erstellt', value: 'jtc_channel_create' },
-                    { name: 'JTC Kanal gelöscht', value: 'jtc_channel_delete' },
-                    { name: 'Server Updates', value: 'guild_update' }
                     // Füge hier weitere Log-Typen hinzu, wenn dein Bot sie unterstützt
                 ))
         .addChannelOption(option =>
