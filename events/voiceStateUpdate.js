@@ -215,10 +215,11 @@ module.exports = {
                                 id: guild.roles.everyone.id, // @everyone Rolle
                                 allow: [
                                     PermissionFlagsBits.ViewChannel,
-                                    PermissionFlagsBits.Connect
+                                    PermissionFlagsBits.Connect,
+                                    PermissionFlagsBits.Speak
                                 ],
                                 deny: [
-                                    PermissionFlagsBits.Speak // Standardmäßig können sie nicht sprechen, Besitzer muss es erlauben
+
                                 ]
                             }
                         ]

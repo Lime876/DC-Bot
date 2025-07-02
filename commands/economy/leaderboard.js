@@ -3,7 +3,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
-const levelsPath = path.join(__dirname, '../data/levels.json');
+const levelsPath = path.join(__dirname, '../../data/levels.json');
 
 const loadLevels = () => {
     if (fs.existsSync(levelsPath)) {
@@ -22,7 +22,7 @@ module.exports = {
         .setName('leaderboard')
         .setDescription('Zeigt die Top-Benutzer nach XP an.'),
 
-        category: 'General', // <-- NEU: Füge diese Zeile hinzu
+        category: 'economy', // <-- NEU: Füge diese Zeile hinzu
 
     async execute(interaction) {
         const levelsData = loadLevels(); // Levels-Daten laden

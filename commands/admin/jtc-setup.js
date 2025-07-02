@@ -71,7 +71,7 @@ module.exports = {
             // Prüfe, ob der JTC-Kanal selbst ein Sprachkanal ist
             if (jtcChannel.type !== ChannelType.GuildVoice) {
                 return interaction.reply({
-                    content: getTranslatedText(lang, 'jtc_command.invalid_channel_type'), // Neue Übersetzung benötigt
+                    content: getTranslatedText(lang, 'jtc_command.invalid_channel_type'),
                     ephemeral: true,
                 });
             }
@@ -79,7 +79,7 @@ module.exports = {
             // Prüfe, ob die Kategorie eine Kategorie ist
             if (jtcCategory && jtcCategory.type !== ChannelType.GuildCategory) {
                 return interaction.reply({
-                    content: getTranslatedText(lang, 'jtc_command.invalid_category_type'), // Neue Übersetzung benötigt
+                    content: getTranslatedText(lang, 'jtc_command.invalid_category_type'),
                     ephemeral: true,
                 });
             }

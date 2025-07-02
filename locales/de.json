@@ -7,7 +7,9 @@
     "UNKNOWN_CONTEXT_MENU_COMMAND": "Dieser Kontextmenü-Befehl ist unbekannt.",
     "UNKNOWN_MODAL_SUBMIT": "Diese Modal-Übermittlung (ID: {modalId}) ist unbekannt oder konnte nicht verarbeitet werden.",
     "ERROR_OCCURRED": "Es ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.",
-    "UNEXPECTED_ERROR": "Es ist ein unerwarteter Fehler aufgetreten. Bitte kontaktieren Sie den Bot-Entwickler."
+    "UNEXPECTED_ERROR": "Es ist ein unerwarteter Fehler aufgetreten. Bitte kontaktieren Sie den Bot-Entwickler.",
+    "INTERACTION_EXPIRED_OR_NOT_YOURS": "Diese Interaktion ist abgelaufen oder gehört dir nicht. Bitte führe den Befehl erneut aus.",
+    "INTERACTION_EXPIRED_RESTART_COMMAND": "Deine Interaktion für diesen Befehl ist abgelaufen. Bitte führe ihn erneut aus, um fortzufahren."
   },
   "embed_builder": {
     "ALREADY_BUILDING": "Sie verwenden bereits den Embed Builder. Bitte beenden oder brechen Sie die aktuelle Sitzung ab.",
@@ -225,7 +227,9 @@
   "permissions": {
     "NO_PERMISSION": "Du hast nicht die Berechtigung, diesen Befehl zu verwenden.",
     "MISSING_PERMISSION_SINGULAR": "Dir fehlt die erforderliche Berechtigung: `{permission}`.",
-    "MISSING_PERMISSION_PLURAL": "Dir fehlen die erforderlichen Berechtigungen: {permissions}."
+    "MISSING_PERMISSION_PLURAL": "Dir fehlen die erforderlichen Berechtigungen: {permissions}.",
+    "MANAGE_GUILD": "Server verwalten",
+    "MANAGE_MESSAGES": "Nachrichten verwalten"
   },
   "role_management": {
     "ROLE_NOT_FOUND": "Rolle nicht gefunden."
@@ -254,7 +258,7 @@
     "field_id": "ID",
     "field_reason": "Grund"
   },
-  "invitetracker_command": {
+"invitetracker_command": {
     "DESCRIPTION": "Verwaltet den Invite Tracker oder zeigt Invite-Statistiken an.",
     "STATUS_SUBCOMMAND_DESCRIPTION": "Zeigt den aktuellen Status des Invite Trackers an.",
     "ON_SUBCOMMAND_DESCRIPTION": "Aktiviert den Invite Tracker für diesen Server.",
@@ -263,6 +267,7 @@
     "MY_INVITES_SUBCOMMAND_DESCRIPTION": "Zeigt an, wie viele Leute du eingeladen hast.",
     "USER_INVITES_SUBCOMMAND_DESCRIPTION": "Zeigt an, wie viele Leute ein bestimmter Benutzer eingeladen hat.",
     "USER_OPTION_DESCRIPTION": "Der Benutzer, dessen Invite-Statistiken angezeigt werden sollen.",
+    "LEADERBOARD_SUBCOMMAND_DESCRIPTION": "Zeigt die Top-Einlader auf dem Server an.",
     "ALREADY_ENABLED": "Der Invite Tracker ist bereits aktiviert.",
     "ENABLE_FAIL_PERMS": "Der Tracker wurde aktiviert, aber ich konnte die vorhandenen Invites nicht abrufen. Bitte stelle sicher, dass ich die Berechtigung 'Einladungen verwalten' habe.",
     "STATUS_ENABLED": "AKTIVIERT ✅",
@@ -280,12 +285,24 @@
     "FIELD_TOTAL_INVITES": "Gesamteinladungen",
     "FIELD_ACTIVE_INVITES": "Aktive Invites",
     "FIELD_YOUR_INVITES": "Deine Invites",
+    "INVITE_USES": "Nutzungen",
     "NO_ACTIVE_INVITES": "Keine aktiven Invites gefunden.",
     "NO_INVITE_DATA_LEADERBOARD": "Es sind noch keine Invite-Daten vorhanden, um ein Leaderboard zu erstellen.",
     "LEADERBOARD_TITLE": "🏆 Top Einlader",
     "LEADERBOARD_DESCRIPTION": "Die Top-Benutzer mit den meisten Einladungen auf diesem Server:",
     "LEADERBOARD_INVITES_COUNT": "Einladungen: **{uses}**",
     "NO_STATS_AVAILABLE": "Noch keine Invite-Statistiken verfügbar."
+  },
+"invite_tracker_event": {
+    "NEW_MEMBER_TITLE": "Willkommen im Server!",
+    "NEW_MEMBER_DESCRIPTION": "Ein neues Mitglied ist dem Server beigetreten.",
+    "FIELD_USER": "Benutzer",
+    "FIELD_JOINED_VIA": "Beigetreten über",
+    "UNKNOWN_INVITE": "Unbekannter Invite / Kein Invite gefunden",
+    "FIELD_INVITED_BY": "Eingeladen von",
+    "UNKNOWN_INVITER": "Unbekannter Einlader",
+    "FIELD_INVITER_USES": "Einladungen des Einladenden",
+    "INVITE_USES_COUNT": "Mal"
   },
   "jtc_command": {
     "DESCRIPTION": "Richtet das Join to Create (JTC) Sprachkanalsystem ein.",
@@ -380,5 +397,83 @@
     "FIELD_NO_VOTES": "Nein-Stimmen 👎",
     "FOOTER_VOTE_ENDED": "Abstimmung beendet.",
     "RESTORE_MESSAGE_NOT_FOUND": "Wiederhergestellte Abstimmung {messageId} nicht gefunden. Kann nicht verarbeitet werden."
+  },
+"spam_command": {
+    "DESCRIPTION": "Verwaltet die Spam-Erkennungsfunktion.",
+    "ENABLE_SUBCOMMAND_DESCRIPTION": "Aktiviert die Spam-Erkennung für diesen Server.",
+    "DISABLE_SUBCOMMAND_DESCRIPTION": "Deaktiviert die Spam-Erkennung für diesen Server.",
+    "SET_CHARACTER_SPAM_THRESHOLD_SUBCOMMAND_DESCRIPTION": "Legt den Schwellenwert für übermäßig viele sich wiederholende Zeichen fest (0.0-1.0).",
+    "CHARACTER_SPAM_THRESHOLD_OPTION_DESCRIPTION": "Verhältnis sich wiederholender Zeichen (z.B. 0.7 für 70%).",
+    "CHARACTER_SPAM_THRESHOLD_SET_SUCCESS": "✅ Schwellenwert für Zeichen-Spam erfolgreich auf {threshold}% gesetzt.",
+    "LINK_GROUP_DESCRIPTION": "Verwaltet gesperrte Links für die Spam-Erkennung.",
+    "LINK_ADD_SUBCOMMAND_DESCRIPTION": "Fügt einen Link oder eine Domain zur Sperrliste hinzu.",
+    "LINK_REMOVE_SUBCOMMAND_DESCRIPTION": "Entfernt einen Link oder eine Domain von der Sperrliste.",
+    "LINK_LIST_SUBCOMMAND_DESCRIPTION": "Zeigt alle gesperrten Links an.",
+    "LINK_OPTION_DESCRIPTION": "Der vollständige Link oder die Domain (z.B. \"malicious.com\" oder \"phishing.link/scam\").",
+    "LINK_OPTION_DESCRIPTION_REMOVE": "Der zu entfernende Link oder die Domain.",
+    "link_added_success": "✅ Link/Domain `{link}` wurde zur Sperrliste hinzugefügt.",
+    "link_already_added": "⚠️ Link/Domain `{link}` ist bereits auf der Sperrliste.",
+    "link_removed_success": "✅ Link/Domain `{link}` wurde von der Sperrliste entfernt.",
+    "link_not_found": "❌ Link/Domain `{link}` wurde nicht auf der Sperrliste gefunden.",
+    "link_list": "🔗 **Gesperrte Links:**\n{links}",
+    "no_links_added": "Es sind derzeit keine Links auf der Sperrliste.",
+    "already_enabled": "Die Spam-Erkennung ist bereits aktiviert.",
+    "enabled_success": "✅ Spam-Erkennung wurde erfolgreich aktiviert.",
+    "already_disabled": "Die Spam-Erkennung ist bereits deaktiviert.",
+    "disabled_success": "✅ Spam-Erkennung wurde erfolgreich deaktiviert.",
+    "RAID_GROUP_DESCRIPTION": "Verwaltet die Einstellungen für den Raid-Schutz.",
+    "RAID_ENABLE_SUBCOMMAND_DESCRIPTION": "Aktiviert den Raid-Schutz.",
+    "RAID_DISABLE_SUBCOMMAND_DESCRIPTION": "Deaktiviert den Raid-Schutz.",
+    "RAID_SET_THRESHOLDS_SUBCOMMAND_DESCRIPTION": "Legt die Schwellenwerte für die Raid-Erkennung fest.",
+    "RAID_MESSAGE_COUNT_OPTION_DESCRIPTION": "Anzahl der ähnlichen Nachrichten, die eine Erkennung auslösen.",
+    "RAID_TIME_PERIOD_OPTION_DESCRIPTION": "Zeitraum für Nachrichten (z.B. \"15s\", \"1m\", \"5m\").",
+    "RAID_USER_COUNT_OPTION_DESCRIPTION": "Anzahl der einzigartigen Benutzer, die ähnliche Nachrichten senden.",
+    "RAID_STATUS_SUBCOMMAND_DESCRIPTION": "Zeigt die aktuellen Einstellungen für den Raid-Schutz an.",
+    "RAID_ALREADY_ENABLED": "Der Raid-Schutz ist bereits aktiviert.",
+    "RAID_ENABLED_SUCCESS": "✅ Raid-Schutz wurde erfolgreich aktiviert.",
+    "RAID_ALREADY_DISABLED": "Der Raid-Schutz ist bereits deaktiviert.",
+    "RAID_DISABLED_SUCCESS": "✅ Raid-Schutz wurde erfolgreich deaktiviert.",
+    "RAID_INVALID_TIME_PERIOD": "Ungültiger Zeitrahmen. Bitte verwende Formate wie \"15s\", \"1m\", \"5m\" (maximal 1 Stunde).",
+    "RAID_THRESHOLDS_SET_SUCCESS": "✅ Raid-Schwellenwerte erfolgreich gesetzt: {messageCount} Nachrichten in {timePeriod} von {userCount} Benutzern.",
+    "RAID_STATUS_TITLE": "🛡️ Raid-Schutz Status",
+    "RAID_STATUS_DESCRIPTION": "Der Raid-Schutz ist **{status}**.",
+    "RAID_FIELD_MESSAGE_COUNT": "Nachrichten-Anzahl",
+    "RAID_FIELD_TIME_PERIOD": "Zeitraum",
+    "RAID_FIELD_USER_COUNT": "Benutzer-Anzahl",
+    "STATUS_ENABLED_TEXT": "AKTIVIERT ✅",
+    "STATUS_DISABLED_TEXT": "DEAKTIVIERT ❌"
+  },
+  "spam_detection": {
+    "LINK_DELETED_TITLE": "Nachricht gelöscht: Gesperrter Link",
+    "LINK_DELETED_DESCRIPTION": "Die Nachricht von **{userTag}** in {channelMention} wurde gelöscht, da sie einen gesperrten Link enthielt: `{link}`.",
+    "ORIGINAL_CONTENT": "Originalinhalt",
+    "LINK_DELETED_USER_NOTIFICATION": "Deine Nachricht wurde gelöscht, da sie einen gesperrten Link (`{link}`) enthielt. Bitte poste keine solchen Links.",
+    "RAID_DETECTED_TITLE": "🚨 RAID ERKANNT! 🚨",
+    "RAID_DETECTED_DESCRIPTION": "Es wurde ein potenzieller Raid erkannt!\n\n**Details:**\n- {messageCount} ähnliche Nachrichten\n- von {userCount} einzigartigen Benutzern\n- innerhalb von {timePeriod}",
+    "RAID_DETECTED_CONTENT": "Inhalt",
+    "RAID_DETECTED_USERS": "Beteiligte Benutzer",
+    "CHARACTER_SPAM_DELETED_TITLE": "Nachricht gelöscht: Zeichen-Spam",
+    "CHARACTER_SPAM_DELETED_DESCRIPTION": "Die Nachricht von **{userTag}** in {channelMention} wurde gelöscht, da sie übermäßig viele sich wiederholende Zeichen enthielt.",
+    "CHARACTER_SPAM_USER_NOTIFICATION": "Deine Nachricht wurde gelöscht, da sie übermäßig viele sich wiederholende Zeichen enthielt. Bitte vermeide Zeichen-Spam."
+  },
+  "help_command": {
+    "DESCRIPTION": "Zeigt eine Liste der Befehle und deren Verwendung an.",
+    "SELECT_MENU_PLACEHOLDER": "Wähle eine Hilfeseite aus...",
+    "PAGE_FOOTER": "Seite {currentPage} von {totalPages}",
+    "PAGE_0_TITLE": "Allgemeine Befehle",
+    "PAGE_0_DESCRIPTION": "Hier findest du allgemeine Befehle und Informationen über den Bot.\n\n**Verfügbare Befehle:**\n`/help` - Zeigt diese Hilfeseite an.\n`/ping` - Überprüft die Latenz des Bots.\n`/info` - Zeigt Informationen über den Bot an.",
+    "PAGE_0_SHORT_DESCRIPTION": "Allgemeine Befehle und Bot-Informationen.",
+    "PAGE_1_TITLE": "Admin-Befehle",
+    "PAGE_1_DESCRIPTION": "Befehle zur Serververwaltung und Konfiguration.\n\n**Verfügbare Befehle:**\n`/autorole` - Verwaltet die automatische Rollenzuweisung für neue Mitglieder.\n`/ban` - Bannt einen Benutzer vom Server.\n`/unban` - Entbannt einen Benutzer über die Benutzer-ID.\n`/language` - Legt die Bot-Sprache für diesen Server fest.\n`/setlog` - Setzt oder entfernt den Log-Kanal für verschiedene Ereignisse.\n`/ticket-setup` - Richtet das Ticket-System für den Server ein.",
+    "PAGE_1_SHORT_DESCRIPTION": "Serververwaltung und Konfiguration.",
+    "PAGE_2_TITLE": "Moderations-Befehle",
+    "PAGE_2_DESCRIPTION": "Befehle zur Moderation von Benutzern und Nachrichten.\n\n**Verfügbare Befehle:**\n`/warn` - Verwarnt einen Benutzer.\n`/mute` - Stummschaltet einen Benutzer temporär.\n`/kick` - Kickt einen Benutzer vom Server.\n`/purge` - Löscht eine bestimmte Anzahl von Nachrichten.",
+    "PAGE_2_SHORT_DESCRIPTION": "Benutzer- und Nachrichtenmoderation.",
+    "PAGE_3_TITLE": "Ticket-System",
+    "PAGE_3_DESCRIPTION": "Informationen und Befehle zur Einrichtung und Verwaltung des Ticket-Systems.\n\n**Verfügbare Befehle:**\n`/ticket-setup` - Richtet das Ticket-System ein.\n`/ticket` (in einem Ticket-Kanal) - Befehle zur Verwaltung eines offenen Tickets (schließen, hinzufügen, entfernen).",
+    "PAGE_3_SHORT_DESCRIPTION": "Einrichtung und Verwaltung von Tickets.",
+    "PAGE_4_TITLE": "JTC (Join to Create)",
+    "PAGE_4_DESCRIPTION": "Informationen und Befehle zum Join-to-Create Sprachkanalsystem.\n\n**Verfügbare Befehle:**\n`/jtc-setup` - Richtet das Join to Create System ein.\n`/jtc-setup disable` - Deaktiviert das JTC-System.\n`/jtc-setup status` - Zeigt den aktuellen JTC-Status an.",
+    "PAGE_4_SHORT_DESCRIPTION": "Dynamische Sprachkanäle."
   }
 }

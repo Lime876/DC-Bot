@@ -1,97 +1,157 @@
 // commands/invitetracker.js
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const { getGuildLanguage, getTranslatedText } = require('../../utils/languageUtils'); // Importiere Sprachfunktionen
 
 const inviteDataPath = path.join(__dirname, '../data/inviteData.json');
 const trackerConfigPath = path.join(__dirname, '../../data/trackerConfig.json');
 
+/**
+ * Lädt die Invite-Daten aus der Datei.
+ * @returns {object} Die Invite-Daten oder ein leeres Objekt.
+ */
 const loadInviteData = () => {
     if (fs.existsSync(inviteDataPath)) {
         try {
             return JSON.parse(fs.readFileSync(inviteDataPath, 'utf8'));
         } catch (e) {
-            console.error(`Fehler beim Parsen von ${inviteDataPath}:`, e);
+            console.error(`[InviteTracker] Fehler beim Parsen von ${inviteDataPath}:`, e);
             return {};
         }
     }
     return {};
 };
 
+/**
+ * Speichert die Invite-Daten in der Datei.
+ * @param {object} data - Die zu speichernden Invite-Daten.
+ */
 const saveInviteData = (data) => {
     try {
+        const dir = path.dirname(inviteDataPath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
         fs.writeFileSync(inviteDataPath, JSON.stringify(data, null, 2));
     } catch (e) {
-        console.error(`Fehler beim Schreiben in ${inviteDataPath}:`, e);
+        console.error(`[InviteTracker] Fehler beim Schreiben in ${inviteDataPath}:`, e);
     }
 };
 
+/**
+ * Lädt die Tracker-Konfiguration aus der Datei.
+ * @returns {object} Die Konfiguration oder ein leeres Objekt.
+ */
 const loadTrackerConfig = () => {
     if (fs.existsSync(trackerConfigPath)) {
         try {
             return JSON.parse(fs.readFileSync(trackerConfigPath, 'utf8'));
         } catch (e) {
-            console.error(`Fehler beim Parsen von ${trackerConfigPath}:`, e);
+            console.error(`[InviteTracker] Fehler beim Parsen von ${trackerConfigPath}:`, e);
             return {};
         }
     }
     return {};
 };
 
+/**
+ * Speichert die Tracker-Konfiguration in der Datei.
+ * @param {object} config - Die zu speichernde Konfiguration.
+ */
 const saveTrackerConfig = (config) => {
     try {
+        const dir = path.dirname(trackerConfigPath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
         fs.writeFileSync(trackerConfigPath, JSON.stringify(config, null, 2));
     } catch (e) {
-        console.error(`Fehler beim Schreiben in ${trackerConfigPath}:`, e);
+        console.error(`[InviteTracker] Fehler beim Schreiben in ${trackerConfigPath}:`, e);
     }
 };
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('invitetracker')
-        .setDescription('Verwaltet den Invite Tracker oder zeigt Invite-Statistiken an.')
+        .setDescription('Manages the Invite Tracker or displays invite statistics.') // Fallback-Beschreibung
+        .setDescriptionLocalizations({
+            de: getTranslatedText('de', 'invitetracker_command.DESCRIPTION'),
+            'en-US': getTranslatedText('en', 'invitetracker_command.DESCRIPTION'),
+        })
+        .setDMPermission(false) // Kann nicht in DMs verwendet werden
         .addSubcommand(subcommand =>
             subcommand
                 .setName('status')
-                .setDescription('Zeigt den aktuellen Status des Invite Trackers an.'))
+                .setDescription('Displays the current status of the Invite Tracker.') // Fallback-Beschreibung
+                .setDescriptionLocalizations({
+                    de: getTranslatedText('de', 'invitetracker_command.STATUS_SUBCOMMAND_DESCRIPTION'),
+                    'en-US': getTranslatedText('en', 'invitetracker_command.STATUS_SUBCOMMAND_DESCRIPTION'),
+                }))
         .addSubcommand(subcommand =>
             subcommand
                 .setName('on')
-                .setDescription('Aktiviert den Invite Tracker für diesen Server.')
+                .setDescription('Activates the Invite Tracker for this server.') // Fallback-Beschreibung
+                .setDescriptionLocalizations({
+                    de: getTranslatedText('de', 'invitetracker_command.ON_SUBCOMMAND_DESCRIPTION'),
+                    'en-US': getTranslatedText('en', 'invitetracker_command.ON_SUBCOMMAND_DESCRIPTION'),
+                })
                 .addChannelOption(option =>
-                    option.setName('log_kanal')
-                        .setDescription('Kanal, in den Beitritts-Logs gesendet werden sollen.')
-                        .addChannelTypes(0) // Nur Textkanäle
+                    option.setName('log_channel') // Option umbenannt zu 'log_channel' für Konsistenz
+                        .setDescription('Channel to send join logs to.') // Fallback-Beschreibung
+                        .setDescriptionLocalizations({
+                            de: getTranslatedText('de', 'invitetracker_command.LOG_CHANNEL_OPTION_DESCRIPTION'),
+                            'en-US': getTranslatedText('en', 'invitetracker_command.LOG_CHANNEL_OPTION_DESCRIPTION'),
+                        })
+                        .addChannelTypes(ChannelType.GuildText) // Nur Textkanäle
                         .setRequired(true)))
         .addSubcommand(subcommand =>
             subcommand
                 .setName('off')
-                .setDescription('Deaktiviert den Invite Tracker für diesen Server.'))
+                .setDescription('Deactivates the Invite Tracker for this server.') // Fallback-Beschreibung
+                .setDescriptionLocalizations({
+                    de: getTranslatedText('de', 'invitetracker_command.OFF_SUBCOMMAND_DESCRIPTION'),
+                    'en-US': getTranslatedText('en', 'invitetracker_command.OFF_SUBCOMMAND_DESCRIPTION'),
+                }))
         .addSubcommand(subcommand =>
             subcommand
-                .setName('meine_invites')
-                .setDescription('Zeigt an, wie viele Leute du eingeladen hast.'))
+                .setName('my_invites') // Umbenannt zu 'my_invites' für Konsistenz
+                .setDescription('Shows how many people you have invited.') // Fallback-Beschreibung
+                .setDescriptionLocalizations({
+                    de: getTranslatedText('de', 'invitetracker_command.MY_INVITES_SUBCOMMAND_DESCRIPTION'),
+                    'en-US': getTranslatedText('en', 'invitetracker_command.MY_INVITES_SUBCOMMAND_DESCRIPTION'),
+                }))
         .addSubcommand(subcommand =>
             subcommand
-                .setName('nutzer_invites')
-                .setDescription('Zeigt an, wie viele Leute ein bestimmter Benutzer eingeladen hat.')
+                .setName('user_invites') // Umbenannt zu 'user_invites' für Konsistenz
+                .setDescription('Shows how many people a specific user has invited.') // Fallback-Beschreibung
+                .setDescriptionLocalizations({
+                    de: getTranslatedText('de', 'invitetracker_command.USER_INVITES_SUBCOMMAND_DESCRIPTION'),
+                    'en-US': getTranslatedText('en', 'invitetracker_command.USER_INVITES_SUBCOMMAND_DESCRIPTION'),
+                })
                 .addUserOption(option =>
                     option.setName('user')
-                        .setDescription('Der Benutzer, dessen Invite-Statistiken angezeigt werden sollen.')
+                        .setDescription('The user whose invite statistics to display.') // Fallback-Beschreibung
+                        .setDescriptionLocalizations({
+                            de: getTranslatedText('de', 'invitetracker_command.USER_OPTION_DESCRIPTION'),
+                            'en-US': getTranslatedText('en', 'invitetracker_command.USER_OPTION_DESCRIPTION'),
+                        })
                         .setRequired(true)))
-        /* Optional: Leaderboard
         .addSubcommand(subcommand =>
             subcommand
                 .setName('leaderboard')
-                .setDescription('Zeigt die Top-Einlader auf dem Server an.')),
-        */
-    , // Komma beachten, wenn du das Leaderboard entkommentierst
+                .setDescription('Displays the top inviters on the server.') // Fallback-Beschreibung
+                .setDescriptionLocalizations({
+                    de: getTranslatedText('de', 'invitetracker_command.LEADERBOARD_SUBCOMMAND_DESCRIPTION'),
+                    'en-US': getTranslatedText('en', 'invitetracker_command.LEADERBOARD_SUBCOMMAND_DESCRIPTION'),
+                })),
 
-    category: 'Admin', // <-- NEU: Füge diese Zeile hinzu
+    category: 'Admin',
 
     async execute(interaction) {
         const subcommand = interaction.options.getSubcommand();
         const guildId = interaction.guild.id;
+        const lang = getGuildLanguage(guildId);
         let trackerConfig = loadTrackerConfig();
         let inviteData = loadInviteData();
 
@@ -102,23 +162,28 @@ module.exports = {
 
         const isEnabled = trackerConfig[guildId].enabled;
 
-        // Manuelle Berechtigungsprüfung für "on" und "off" Subcommands
-        if (subcommand === 'on' || subcommand === 'off') {
+        // Manuelle Berechtigungsprüfung für "on" und "off" Subcommands und "leaderboard"
+        if (['on', 'off', 'leaderboard'].includes(subcommand)) {
             if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-                return interaction.reply({ content: '❌ Du hast nicht die Berechtigung, den Invite Tracker zu verwalten. (Benötigt: `Manage Guild` oder `Server verwalten`)', ephemeral: true });
+                return interaction.reply({
+                    content: getTranslatedText(lang, 'permissions.MISSING_PERMISSION_SINGULAR', { permission: getTranslatedText(lang, 'permissions.MANAGE_GUILD') }),
+                    flags: [MessageFlags.Ephemeral]
+                });
             }
         }
 
         if (subcommand === 'status') {
             const statusEmbed = new EmbedBuilder()
                 .setColor(isEnabled ? 0x00FF00 : 0xFF0000)
-                .setTitle('📊 Invite Tracker Status')
-                .setDescription(`Der Invite Tracker ist für diesen Server **${isEnabled ? 'AKTIVIERT ✅' : 'DEAKTIVIERT ❌'}**.`)
+                .setTitle(getTranslatedText(lang, 'invitetracker_command.STATUS_TITLE'))
+                .setDescription(getTranslatedText(lang, 'invitetracker_command.STATUS_DESCRIPTION', {
+                    status: isEnabled ? getTranslatedText(lang, 'invitetracker_command.STATUS_ENABLED') : getTranslatedText(lang, 'invitetracker_command.STATUS_DISABLED')
+                }))
                 .setTimestamp();
             
             if (isEnabled && trackerConfig[guildId].channelId) {
                 statusEmbed.addFields(
-                    { name: 'Log-Kanal', value: `<#${trackerConfig[guildId].channelId}>`, inline: true }
+                    { name: getTranslatedText(lang, 'invitetracker_command.STATUS_FIELD_LOG_CHANNEL'), value: `<#${trackerConfig[guildId].channelId}>`, inline: true }
                 );
             }
 
@@ -126,33 +191,45 @@ module.exports = {
 
         } else if (subcommand === 'on') {
             if (isEnabled) {
-                return interaction.reply({ content: '✅ Der Invite Tracker ist bereits aktiviert.', ephemeral: true });
+                return interaction.reply({ content: getTranslatedText(lang, 'invitetracker_command.ALREADY_ENABLED'), flags: [MessageFlags.Ephemeral] });
             }
 
-            const logChannel = interaction.options.getChannel('log_kanal');
+            const logChannel = interaction.options.getChannel('log_channel'); // Name der Option angepasst
             trackerConfig[guildId].enabled = true;
             trackerConfig[guildId].channelId = logChannel.id;
             saveTrackerConfig(trackerConfig);
 
             // Bot muss jetzt alle Invites neu cachen, um ein sauberes Starten zu gewährleisten
             try {
+                // Überprüfe, ob der Bot die Berechtigung 'Manage Guild' oder 'Manage Channels' hat,
+                // um Invites zu fetchen. Discord.js benötigt 'Manage Guild' für guild.invites.fetch().
+                if (!interaction.guild.members.me.permissions.has(PermissionFlagsBits.ManageGuild)) {
+                    console.warn(`[Invite Tracker] Bot lacks ManageGuild permission in guild ${guildId}. Cannot fetch invites.`);
+                    return interaction.reply({
+                        content: getTranslatedText(lang, 'invitetracker_command.ENABLE_FAIL_PERMS'),
+                        flags: [MessageFlags.Ephemeral]
+                    });
+                }
                 await interaction.guild.invites.fetch();
                 console.log(`[Invite Tracker] Invites für Server "${interaction.guild.name}" (${guildId}) neu gecacht nach Aktivierung.`);
             } catch (error) {
                 console.error(`[Invite Tracker] Konnte Invites für Server ${guildId} nicht cachen:`, error);
-                return interaction.reply({ content: `❌ Der Tracker wurde aktiviert, aber ich konnte die vorhandenen Invites nicht abrufen. Bitte stelle sicher, dass ich die Berechtigung 'Einladungen verwalten' habe.`, ephemeral: true });
+                return interaction.reply({
+                    content: getTranslatedText(lang, 'invitetracker_command.ENABLE_FAIL_PERMS'),
+                    flags: [MessageFlags.Ephemeral]
+                });
             }
 
             const enableEmbed = new EmbedBuilder()
                 .setColor(0x00FF00)
-                .setTitle('✅ Invite Tracker aktiviert!')
-                .setDescription(`Der Invite Tracker wurde erfolgreich aktiviert und sendet Beitritts-Logs in ${logChannel}.`)
+                .setTitle(getTranslatedText(lang, 'invitetracker_command.ENABLE_TITLE'))
+                .setDescription(getTranslatedText(lang, 'invitetracker_command.ENABLE_DESCRIPTION', { logChannel: logChannel.toString() }))
                 .setTimestamp();
             await interaction.reply({ embeds: [enableEmbed] });
 
         } else if (subcommand === 'off') {
             if (!isEnabled) {
-                return interaction.reply({ content: '❌ Der Invite Tracker ist bereits deaktiviert.', ephemeral: true });
+                return interaction.reply({ content: getTranslatedText(lang, 'invitetracker_command.ALREADY_DISABLED'), flags: [MessageFlags.Ephemeral] });
             }
 
             trackerConfig[guildId].enabled = false;
@@ -161,17 +238,17 @@ module.exports = {
 
             const disableEmbed = new EmbedBuilder()
                 .setColor(0xFF0000)
-                .setTitle('❌ Invite Tracker deaktiviert!')
-                .setDescription('Der Invite Tracker wurde erfolgreich deaktiviert.')
+                .setTitle(getTranslatedText(lang, 'invitetracker_command.DISABLE_TITLE'))
+                .setDescription(getTranslatedText(lang, 'invitetracker_command.DISABLE_DESCRIPTION'))
                 .setTimestamp();
             await interaction.reply({ embeds: [disableEmbed] });
 
-        } else if (subcommand === 'meine_invites' || subcommand === 'nutzer_invites') {
+        } else if (subcommand === 'my_invites' || subcommand === 'user_invites') {
             if (!isEnabled) {
-                return interaction.reply({ content: '❌ Der Invite Tracker ist auf diesem Server nicht aktiviert.', ephemeral: true });
+                return interaction.reply({ content: getTranslatedText(lang, 'invitetracker_command.NOT_ENABLED'), flags: [MessageFlags.Ephemeral] });
             }
 
-            const targetUser = subcommand === 'meine_invites' ? interaction.user : interaction.options.getUser('user');
+            const targetUser = subcommand === 'my_invites' ? interaction.user : interaction.options.getUser('user');
             
             const userInvites = inviteData[guildId] ? Object.values(inviteData[guildId]).filter(inv => inv.inviterId === targetUser.id) : [];
 
@@ -188,36 +265,34 @@ module.exports = {
 
             const userEmbed = new EmbedBuilder()
                 .setColor(0x3498db)
-                .setTitle(`🔗 Invite-Statistiken für ${targetUser.tag}`)
+                .setTitle(getTranslatedText(lang, 'invitetracker_command.USER_STATS_TITLE', { userTag: targetUser.tag }))
                 .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
                 .addFields(
-                    { name: 'Gesamteinladungen', value: `${totalUses}`, inline: true },
-                    { name: 'Aktive Invites', value: `${activeInvitesCount}`, inline: true }
+                    { name: getTranslatedText(lang, 'invitetracker_command.FIELD_TOTAL_INVITES'), value: `${totalUses}`, inline: true },
+                    { name: getTranslatedText(lang, 'invitetracker_command.FIELD_ACTIVE_INVITES'), value: `${activeInvitesCount}`, inline: true }
                 )
                 .setTimestamp();
             
             if (userInvites.length > 0) {
-                const inviteCodesList = userInvites.map(inv => `\`${inv.code}\` (${inv.uses} Nutzungen)`).join(', ');
+                const inviteCodesList = userInvites.map(inv => `\`${inv.code}\` (${inv.uses} ${getTranslatedText(lang, 'invitetracker_command.INVITE_USES')})`).join(', ');
                 userEmbed.addFields(
-                    { name: 'Deine Invites', value: inviteCodesList.length > 1024 ? inviteCodesList.substring(0, 1020) + '...' : inviteCodesList, inline: false }
+                    { name: getTranslatedText(lang, 'invitetracker_command.FIELD_YOUR_INVITES'), value: inviteCodesList.length > 1024 ? inviteCodesList.substring(0, 1020) + '...' : inviteCodesList, inline: false }
                 );
             } else {
                  userEmbed.addFields(
-                    { name: 'Deine Invites', value: 'Keine aktiven Invites gefunden.', inline: false }
+                    { name: getTranslatedText(lang, 'invitetracker_command.FIELD_YOUR_INVITES'), value: getTranslatedText(lang, 'invitetracker_command.NO_ACTIVE_INVITES'), inline: false }
                 );
             }
 
-
             await interaction.reply({ embeds: [userEmbed], ephemeral: false });
         }
-        /* Optional: Leaderboard Logic
         else if (subcommand === 'leaderboard') {
             if (!isEnabled) {
-                return interaction.reply({ content: '❌ Der Invite Tracker ist auf diesem Server nicht aktiviert.', ephemeral: true });
+                return interaction.reply({ content: getTranslatedText(lang, 'invitetracker_command.NOT_ENABLED'), flags: [MessageFlags.Ephemeral] });
             }
 
             if (!inviteData[guildId] || Object.keys(inviteData[guildId]).length === 0) {
-                return interaction.reply({ content: '❌ Es sind noch keine Invite-Daten vorhanden, um ein Leaderboard zu erstellen.', ephemeral: true });
+                return interaction.reply({ content: getTranslatedText(lang, 'invitetracker_command.NO_INVITE_DATA_LEADERBOARD'), flags: [MessageFlags.Ephemeral] });
             }
 
             const inviterStats = {}; // { inviterId: totalUses }
@@ -236,8 +311,8 @@ module.exports = {
 
             const leaderboardEmbed = new EmbedBuilder()
                 .setColor(0xFFA500)
-                .setTitle('🏆 Top Einlader')
-                .setDescription('Die Top-Benutzer mit den meisten Einladungen auf diesem Server:')
+                .setTitle(getTranslatedText(lang, 'invitetracker_command.LEADERBOARD_TITLE'))
+                .setDescription(getTranslatedText(lang, 'invitetracker_command.LEADERBOARD_DESCRIPTION'))
                 .setTimestamp();
 
             let rank = 1;
@@ -246,7 +321,7 @@ module.exports = {
                 if (user) {
                     leaderboardEmbed.addFields({
                         name: `${rank}. ${user.tag}`,
-                        value: `Einladungen: **${uses}**`,
+                        value: getTranslatedText(lang, 'invitetracker_command.LEADERBOARD_INVITES_COUNT', { uses: uses }),
                         inline: false
                     });
                     rank++;
@@ -254,11 +329,10 @@ module.exports = {
             }
 
             if (leaderboardEmbed.data.fields && leaderboardEmbed.data.fields.length === 0) {
-                 leaderboardEmbed.setDescription('Noch keine Invite-Statistiken verfügbar.');
+                 leaderboardEmbed.setDescription(getTranslatedText(lang, 'invitetracker_command.NO_STATS_AVAILABLE'));
             }
 
             await interaction.reply({ embeds: [leaderboardEmbed], ephemeral: false });
         }
-        */
     },
 };

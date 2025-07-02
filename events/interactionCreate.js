@@ -11,16 +11,12 @@ const { getGuildLanguage, getTranslatedText } = require('../utils/languageUtils'
  */
 async function safeReply(interaction, content, options = {}) {
     const replyOptions = { ...options, content: content };
-    // Prüfe und füge Ephemeral-Flag hinzu, wenn ephemeral in Optionen ist
+
+    // KORREKTUR: Korrekte Handhabung des 'ephemeral'-Flags
     if (options.ephemeral) {
-        if (!replyOptions.flags) {
-            replyOptions.flags = [];
-        }
-        // Stelle sicher, dass MessageFlags.Ephemeral nicht doppelt hinzugefügt wird
-        if (!replyOptions.flags.includes(MessageFlags.Ephemeral)) {
-            replyOptions.flags.push(MessageFlags.Ephemeral);
-        }
-        delete replyOptions.ephemeral; // Entferne die custom 'ephemeral' Eigenschaft
+        // Kombiniere das Ephemeral-Flag mit bestehenden Flags (falls vorhanden)
+        replyOptions.flags = (replyOptions.flags || 0) | MessageFlags.Ephemeral;
+        delete replyOptions.ephemeral; // Entferne die veraltete 'ephemeral'-Eigenschaft
     }
 
     try {
@@ -88,7 +84,20 @@ module.exports = {
                         console.warn(`[InteractionCreate] Embed-Button '${interaction.customId}' ohne zugehörigen Handler oder falsche Delegation.`);
                         await safeReply(interaction, getTranslatedText(lang, 'bot_messages.UNKNOWN_BUTTON_INTERACTION'), { ephemeral: true });
                     }
-                } else {
+                }
+                // NEU: Delegiert alle Hilfe-bezogenen Buttons an den 'help' Befehl
+                else if (interaction.customId.startsWith('help_')) { // Annahme: Hilfe-Buttons beginnen mit 'help_'
+                    const helpCommand = client.commands.get('help');
+                    // WICHTIG: Der 'help'-Befehl MUSS eine Methode 'handleInteraction' exportieren,
+                    // die Interaktionen von Buttons (oder SelectMenus) verarbeitet.
+                    if (helpCommand && helpCommand.handleInteraction) {
+                        await helpCommand.handleInteraction(interaction, client);
+                    } else {
+                        console.warn(`[InteractionCreate] Hilfe-Button '${interaction.customId}' ohne zugehörigen Handler ('handleInteraction' fehlt im 'help'-Befehl) oder falsche Delegation.`);
+                        await safeReply(interaction, getTranslatedText(lang, 'bot_messages.UNKNOWN_BUTTON_INTERACTION'), { ephemeral: true });
+                    }
+                }
+                else {
                     console.warn(`[InteractionCreate] Unbehandelte Button-Interaktion customId: ${interaction.customId}`);
                     await safeReply(interaction, getTranslatedText(lang, 'bot_messages.UNKNOWN_BUTTON_INTERACTION'), { ephemeral: true });
                 }
@@ -104,7 +113,18 @@ module.exports = {
                         console.warn(`[InteractionCreate] Embed-SelectMenu '${interaction.customId}' ohne zugehörigen Handler oder falsche Delegation.`);
                         await safeReply(interaction, getTranslatedText(lang, 'bot_messages.UNKNOWN_SELECT_MENU_INTERACTION'), { ephemeral: true });
                     }
-                } else {
+                }
+                // NEU: Delegiert Hilfe-bezogene Select Menus (falls vorhanden) an den 'help' Befehl
+                else if (interaction.customId.startsWith('help_')) {
+                    const helpCommand = client.commands.get('help');
+                    if (helpCommand && helpCommand.handleInteraction) {
+                        await helpCommand.handleInteraction(interaction, client);
+                    } else {
+                        console.warn(`[InteractionCreate] Hilfe-SelectMenu '${interaction.customId}' ohne zugehörigen Handler oder falsche Delegation.`);
+                        await safeReply(interaction, getTranslatedText(lang, 'bot_messages.UNKNOWN_SELECT_MENU_INTERACTION'), { ephemeral: true });
+                    }
+                }
+                else {
                     console.warn(`[InteractionCreate] Unbehandelte StringSelectMenu-Interaktion customId: ${interaction.customId}`);
                     await safeReply(interaction, getTranslatedText(lang, 'bot_messages.UNKNOWN_SELECT_MENU_INTERACTION'), { ephemeral: true });
                 }
@@ -140,31 +160,45 @@ module.exports = {
                     if (embedsCommand && embedsCommand.handleInteraction) {
                         try {
                             await embedsCommand.handleInteraction(interaction, client);
-                            // Nach dem Modal-Submit muss eine Antwort erfolgt sein.
-                            // Der Embeds-Befehl sollte dies bereits getan haben.
-                            return; 
+                            return;
                         } catch (error) {
                             console.error(`[ModalInteraction] Fehler beim Verarbeiten des Embed Builder Modals '${interaction.customId}':`, error);
                             await safeReply(interaction, getTranslatedText(lang, 'bot_messages.ERROR_OCCURRED'), { ephemeral: true });
-                            return; 
+                            return;
                         }
                     } else {
                         console.warn(`[InteractionCreate] Embed-Modal '${interaction.customId}' ohne zugehörigen Handler oder falsche Delegation.`);
                         await safeReply(interaction, getTranslatedText(lang, 'bot_messages.UNKNOWN_MODAL_SUBMIT', { modalId: interaction.customId }), { ephemeral: true });
                     }
-                } else {
+                }
+                // NEU: Delegiert Hilfe-bezogene Modals (falls vorhanden) an den 'help' Befehl
+                else if (interaction.customId.startsWith('help_')) {
+                    const helpCommand = client.commands.get('help');
+                    if (helpCommand && helpCommand.handleInteraction) {
+                        try {
+                            await helpCommand.handleInteraction(interaction, client);
+                            return;
+                        } catch (error) {
+                            console.error(`[ModalInteraction] Fehler beim Verarbeiten des Help Modals '${interaction.customId}':`, error);
+                            await safeReply(interaction, getTranslatedText(lang, 'bot_messages.ERROR_OCCURRED'), { ephemeral: true });
+                            return;
+                        }
+                    } else {
+                        console.warn(`[InteractionCreate] Hilfe-Modal '${interaction.customId}' ohne zugehörigen Handler oder falsche Delegation.`);
+                        await safeReply(interaction, getTranslatedText(lang, 'bot_messages.UNKNOWN_MODAL_SUBMIT', { modalId: interaction.customId }), { ephemeral: true });
+                    }
+                }
+                else {
                     console.warn(`[InteractionCreate] Unbehandelte Modal Submit customId: ${interaction.customId}`);
-                    // Versuche, die Interaktion zu verzögern, wenn sie noch nicht beantwortet wurde
                     if (!interaction.replied && !interaction.deferred) {
                          await interaction.deferUpdate().catch(e => console.error("Fehler beim DeferUpdate für unbekanntes Modal:", e));
                     }
                     await safeReply(interaction, getTranslatedText(lang, 'bot_messages.UNKNOWN_MODAL_SUBMIT', { modalId: interaction.customId }), { ephemeral: true });
                 }
             }
-            // Andere Interaktionstypen (z.B. MessageComponent, UserContextMenu etc. die nicht spezifisch behandelt werden)
+            // Andere Interaktionstypen
             else {
                 console.warn(`[InteractionCreate] Unbekannter oder unbehandelter Interaktionstyp: ${interaction.type}, CustomId: ${interaction.customId || 'N/A'}`);
-                // Nur deferUpdate aufrufen, wenn noch nicht geantwortet/defered
                 if (!interaction.replied && !interaction.deferred) {
                     try {
                         await interaction.deferUpdate();

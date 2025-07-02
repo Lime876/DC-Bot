@@ -1,17 +1,20 @@
 // events/guildMemberAdd.js
-const { Events, EmbedBuilder, PermissionsBitField } = require('discord.js'); // PermissionsBitField hinzugefügt
+const { Events, EmbedBuilder, PermissionsBitField } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const { getGuildLanguage, getTranslatedText } = require('../utils/languageUtils'); // Import für Übersetzungen hinzugefügt
+const { getGuildLanguage, getTranslatedText } = require('../utils/languageUtils');
 
 // Pfade für Invite Tracker
 const inviteDataPath = path.join(__dirname, '../data/inviteData.json');
 const trackerConfigPath = path.join(__dirname, '../data/trackerConfig.json');
 
 // Pfad für Autorolle
-const autoroleConfigPath = path.join(__dirname, '../data/autoroleConfig.json'); // NEU: Pfad zur Autorollen-Konfig
+const autoroleConfigPath = path.join(__dirname, '../data/autoroleConfig.json');
 
-// Ladefunktion für Invite Data (bereits vorhanden)
+/**
+ * Lädt die Invite-Daten aus der Datei.
+ * @returns {object} Die Invite-Daten oder ein leeres Objekt.
+ */
 const loadInviteData = () => {
     if (fs.existsSync(inviteDataPath)) {
         try {
@@ -24,16 +27,26 @@ const loadInviteData = () => {
     return {};
 };
 
-// Speicherfunktion für Invite Data (bereits vorhanden)
+/**
+ * Speichert die Invite-Daten in der Datei.
+ * @param {object} data - Die zu speichernden Invite-Daten.
+ */
 const saveInviteData = (data) => {
     try {
+        const dir = path.dirname(inviteDataPath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
         fs.writeFileSync(inviteDataPath, JSON.stringify(data, null, 2));
     } catch (e) {
         console.error(`[Invite Tracker] Fehler beim Schreiben in ${inviteDataPath}:`, e);
     }
 };
 
-// Ladefunktion für Tracker Config (bereits vorhanden)
+/**
+ * Lädt die Tracker-Konfiguration aus der Datei.
+ * @returns {object} Die Konfiguration oder ein leeres Objekt.
+ */
 const loadTrackerConfig = () => {
     if (fs.existsSync(trackerConfigPath)) {
         try {
@@ -46,7 +59,10 @@ const loadTrackerConfig = () => {
     return {};
 };
 
-// NEU: Ladefunktion für Autorollen-Konfiguration
+/**
+ * Lädt die Autorollen-Konfiguration aus der Datei.
+ * @returns {object} Die Konfiguration oder ein leeres Objekt.
+ */
 const loadAutoroleConfig = () => {
     if (fs.existsSync(autoroleConfigPath)) {
         try {
@@ -59,7 +75,10 @@ const loadAutoroleConfig = () => {
     return {};
 };
 
-// NEU: Speicherfunktion für Autorollen-Konfiguration (nicht direkt im Event verwendet, aber gute Praxis)
+/**
+ * Speichert die Autorollen-Konfiguration in der Datei.
+ * @param {object} config - Die zu speichernde Konfiguration.
+ */
 const saveAutoroleConfig = (config) => {
     try {
         const dir = path.dirname(autoroleConfigPath);
@@ -77,9 +96,9 @@ module.exports = {
     name: Events.GuildMemberAdd,
     async execute(member, client) {
         const guildId = member.guild.id;
-        const lang = getGuildLanguage(guildId); // Sprache für diesen Server abrufen
+        const lang = getGuildLanguage(guildId);
 
-        // --- Start der Invite Tracker Logik (Dein bestehender Code) ---
+        // --- Start der Invite Tracker Logik ---
         const trackerConfig = loadTrackerConfig();
 
         if (trackerConfig[guildId] && trackerConfig[guildId].enabled) { // Nur wenn der Tracker aktiviert ist
@@ -88,35 +107,45 @@ module.exports = {
                 inviteData[guildId] = {};
             }
 
-            // Cache alle aktuellen Invites des Servers
-            const newInvites = await member.guild.invites.fetch();
-            // Stellen Sie sicher, dass der Cache initialisiert ist, falls der Bot gerade gestartet wurde
-            if (!client.guilds.cache.get(guildId) || !client.guilds.cache.get(guildId).invites) {
-                console.log(`[Invite Tracker] Initialisiere Invite-Cache für ${member.guild.name} nach Beitritt.`);
-                client.guilds.cache.get(guildId).invites = { cache: new Map() };
-            }
-            const oldInvites = client.guilds.cache.get(guildId).invites.cache;
-
             let usedInvite = null;
+            let inviter = null;
+            let inviteCode = getTranslatedText(lang, 'invite_tracker_event.UNKNOWN_INVITE'); // Standardwert
 
-            // Finde den Invite, dessen Nutzung sich erhöht hat
-            for (const [code, invite] of newInvites) {
-                const oldInvite = oldInvites.get(code);
-                if (oldInvite && invite.uses > oldInvite.uses) {
-                    usedInvite = invite;
-                    break;
+            try {
+                // Stellen Sie sicher, dass der Bot die Berechtigung 'Manage Guild' hat, um Invites zu fetchen.
+                if (!member.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageGuild)) {
+                    console.warn(`[Invite Tracker] Bot lacks ManageGuild permission in guild ${member.guild.name} (${guildId}). Cannot fetch invites for tracking.`);
+                    // Wenn der Bot keine Berechtigung hat, können wir keine Invites verfolgen.
+                    // Wir fahren fort, aber ohne Invite-Informationen.
+                } else {
+                    // Cache alle aktuellen Invites des Servers
+                    const newInvites = await member.guild.invites.fetch();
+
+                    // Initialisiere den alten Invite-Cache, falls nicht vorhanden
+                    if (!client.guilds.cache.get(guildId).invites) {
+                        client.guilds.cache.get(guildId).invites = { cache: new Map() };
+                    }
+                    const oldInvites = client.guilds.cache.get(guildId).invites.cache;
+
+                    // Finde den Invite, dessen Nutzung sich erhöht hat
+                    for (const [code, invite] of newInvites) {
+                        const oldInvite = oldInvites.get(code);
+                        if (oldInvite && invite.uses > oldInvite.uses) {
+                            usedInvite = invite;
+                            break;
+                        }
+                    }
+
+                    // Aktualisiere den Cache des Bots für zukünftige Vergleiche
+                    client.guilds.cache.get(guildId).invites.cache = newInvites;
                 }
+
+            } catch (error) {
+                console.error(`[Invite Tracker] Fehler beim Abrufen/Vergleichen von Invites für Gilde ${guildId}:`, error);
+                // Fehler beim Abrufen der Invites, fahren Sie ohne Invite-Informationen fort
             }
 
-            // Aktualisiere den Cache des Bots für zukünftige Vergleiche
-            // Dies sollte NACH dem Vergleich passieren, um den alten Zustand für den nächsten Beitritt zu speichern
-            // Und es sollte den gesamten neuen Cache überschreiben
-            client.guilds.cache.get(guildId).invites.cache = newInvites;
-
-
-            let inviter = null;
             let inviterUses = 0;
-            let inviteCode = 'Unbekannt';
 
             if (usedInvite) {
                 inviter = usedInvite.inviter;
@@ -155,19 +184,19 @@ module.exports = {
                 if (logChannel && logChannel.isTextBased()) {
                     const welcomeEmbed = new EmbedBuilder()
                         .setColor(0x00FF00)
-                        .setTitle(getTranslatedText(lang, 'invite_tracker.NEW_MEMBER_TITLE')) // Beispiel: Titel übersetzen
-                        .setDescription(getTranslatedText(lang, 'invite_tracker.NEW_MEMBER_DESCRIPTION', { userTag: member.user.tag })) // Beispiel: Beschreibung übersetzen
+                        .setTitle(getTranslatedText(lang, 'invite_tracker_event.NEW_MEMBER_TITLE'))
+                        .setDescription(getTranslatedText(lang, 'invite_tracker_event.NEW_MEMBER_DESCRIPTION', { userTag: member.user.tag }))
                         .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
                         .addFields(
-                            { name: getTranslatedText(lang, 'invite_tracker.FIELD_USER'), value: `<@${member.user.id}> (${member.user.id})`, inline: true },
-                            { name: getTranslatedText(lang, 'invite_tracker.FIELD_JOINED_VIA'), value: usedInvite ? `\`${inviteCode}\`` : getTranslatedText(lang, 'invite_tracker.UNKNOWN_INVITE'), inline: true },
-                            { name: getTranslatedText(lang, 'invite_tracker.FIELD_INVITED_BY'), value: inviter ? `<@${inviter.id}> (${inviter.tag})` : getTranslatedText(lang, 'invite_tracker.UNKNOWN_INVITER'), inline: true }
+                            { name: getTranslatedText(lang, 'invite_tracker_event.FIELD_USER'), value: `<@${member.user.id}> (${member.user.id})`, inline: true },
+                            { name: getTranslatedText(lang, 'invite_tracker_event.FIELD_JOINED_VIA'), value: `\`${inviteCode}\``, inline: true },
+                            { name: getTranslatedText(lang, 'invite_tracker_event.FIELD_INVITED_BY'), value: inviter ? `<@${inviter.id}> (${inviter.tag})` : getTranslatedText(lang, 'invite_tracker_event.UNKNOWN_INVITER'), inline: true }
                         )
                         .setTimestamp();
 
                     if (inviter) {
                         welcomeEmbed.addFields(
-                            { name: getTranslatedText(lang, 'invite_tracker.FIELD_INVITER_USES'), value: `${inviterUses} Mal`, inline: true }
+                            { name: getTranslatedText(lang, 'invite_tracker_event.FIELD_INVITER_USES'), value: `${inviterUses} ${getTranslatedText(lang, 'invite_tracker_event.INVITE_USES_COUNT')}`, inline: true }
                         );
                     }
 
@@ -179,7 +208,7 @@ module.exports = {
         }
         // --- Ende der Invite Tracker Logik ---
 
-        // --- Start der Autorollen Logik (NEU hinzugefügt) ---
+        // --- Start der Autorollen Logik ---
         const autoroleConfig = loadAutoroleConfig();
         const guildAutoroleConfig = autoroleConfig[guildId] || {};
         const autoroleId = guildAutoroleConfig.autoroleId;
@@ -190,9 +219,6 @@ module.exports = {
 
                 if (!role) {
                     console.warn(`[Autorole Event] Konfigurierte Autorolle ${autoroleId} für Gilde ${guildId} nicht gefunden. (Möglicherweise gelöscht)`);
-                    // Optional: Rolle aus der Konfiguration entfernen, wenn sie nicht existiert
-                    // delete autoroleConfig[guildId].autoroleId;
-                    // saveAutoroleConfig(autoroleConfig);
                     return;
                 }
 

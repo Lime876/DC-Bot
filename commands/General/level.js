@@ -3,7 +3,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
-const levelsPath = path.join(__dirname, '../data/levels.json');
+const levelsPath = path.join(__dirname, '../../data/levels.json');
 
 // Funktion zum Laden der Leveldaten (wie im messageCreate.js)
 const loadLevels = () => {
@@ -33,7 +33,7 @@ module.exports = {
                 .setDescription('Den Level eines anderen Benutzers anzeigen.')
                 .setRequired(false)),
 
-    category: 'General', // <-- NEU: Füge diese Zeile hinzu
+    category: 'General',
 
     async execute(interaction) {
         const targetUser = interaction.options.getUser('user') || interaction.user;

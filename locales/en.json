@@ -7,7 +7,9 @@
     "UNKNOWN_CONTEXT_MENU_COMMAND": "This context menu command is unknown.",
     "UNKNOWN_MODAL_SUBMIT": "This modal submission (ID: {modalId}) is unknown or could not be processed.",
     "ERROR_OCCURRED": "An error occurred. Please try again later.",
-    "UNEXPECTED_ERROR": "An unexpected error occurred. Please contact the bot developer."
+    "UNEXPECTED_ERROR": "An unexpected error occurred. Please contact the bot developer.",
+    "INTERACTION_EXPIRED_OR_NOT_YOURS": "This interaction has expired or does not belong to you. Please run the command again.",
+    "INTERACTION_EXPIRED_RESTART_COMMAND": "Your interaction for this command has expired. Please run it again to continue."
   },
   "embed_builder": {
     "ALREADY_BUILDING": "You are already using the Embed Builder. Please finish or cancel the current session.",
@@ -225,7 +227,9 @@
   "permissions": {
     "NO_PERMISSION": "You do not have permission to use this command.",
     "MISSING_PERMISSION_SINGULAR": "You are missing the required permission: `{permission}`.",
-    "MISSING_PERMISSION_PLURAL": "You are missing the required permissions: {permissions}."
+    "MISSING_PERMISSION_PLURAL": "You are missing the required permissions: {permissions}.",
+    "MANAGE_GUILD": "Manage Guild",
+    "MANAGE_MESSAGES": "Manage Messages"
   },
   "role_management": {
     "ROLE_NOT_FOUND": "Role not found."
@@ -254,7 +258,7 @@
     "field_id": "ID",
     "field_reason": "Reason"
   },
-  "invitetracker_command": {
+"invitetracker_command": {
     "DESCRIPTION": "Manages the Invite Tracker or displays invite statistics.",
     "STATUS_SUBCOMMAND_DESCRIPTION": "Displays the current status of the Invite Tracker.",
     "ON_SUBCOMMAND_DESCRIPTION": "Activates the Invite Tracker for this server.",
@@ -263,6 +267,7 @@
     "MY_INVITES_SUBCOMMAND_DESCRIPTION": "Shows how many people you have invited.",
     "USER_INVITES_SUBCOMMAND_DESCRIPTION": "Shows how many people a specific user has invited.",
     "USER_OPTION_DESCRIPTION": "The user whose invite statistics to display.",
+    "LEADERBOARD_SUBCOMMAND_DESCRIPTION": "Displays the top inviters on the server.",
     "ALREADY_ENABLED": "The Invite Tracker is already enabled.",
     "ENABLE_FAIL_PERMS": "The tracker was enabled, but I could not fetch existing invites. Please ensure I have 'Manage Invites' permission.",
     "STATUS_ENABLED": "ENABLED ✅",
@@ -280,12 +285,24 @@
     "FIELD_TOTAL_INVITES": "Total Invites",
     "FIELD_ACTIVE_INVITES": "Active Invites",
     "FIELD_YOUR_INVITES": "Your Invites",
+    "INVITE_USES": "uses",
     "NO_ACTIVE_INVITES": "No active invites found.",
     "NO_INVITE_DATA_LEADERBOARD": "No invite data available to create a leaderboard.",
     "LEADERBOARD_TITLE": "🏆 Top Inviters",
     "LEADERBOARD_DESCRIPTION": "The top users with the most invites on this server:",
     "LEADERBOARD_INVITES_COUNT": "Invites: **{uses}**",
     "NO_STATS_AVAILABLE": "No invite statistics available yet."
+  },
+"invite_tracker_event": {
+    "NEW_MEMBER_TITLE": "Welcome to the Server!",
+    "NEW_MEMBER_DESCRIPTION": "A new member has joined the server.",
+    "FIELD_USER": "User",
+    "FIELD_JOINED_VIA": "Joined via",
+    "UNKNOWN_INVITE": "Unknown Invite / No Invite Found",
+    "FIELD_INVITED_BY": "Invited by",
+    "UNKNOWN_INVITER": "Unknown Inviter",
+    "FIELD_INVITER_USES": "Inviter's Uses",
+    "INVITE_USES_COUNT": "times"
   },
   "jtc_command": {
     "DESCRIPTION": "Sets up the Join to Create (JTC) voice channel system.",
@@ -380,5 +397,83 @@
     "FIELD_NO_VOTES": "No Votes 👎",
     "FOOTER_VOTE_ENDED": "Vote ended.",
     "RESTORE_MESSAGE_NOT_FOUND": "Restored vote {messageId} not found. Cannot process."
+  },
+"spam_command": {
+    "DESCRIPTION": "Manages the spam detection feature.",
+    "ENABLE_SUBCOMMAND_DESCRIPTION": "Enables spam detection for this server.",
+    "DISABLE_SUBCOMMAND_DESCRIPTION": "Disables spam detection for this server.",
+    "SET_CHARACTER_SPAM_THRESHOLD_SUBCOMMAND_DESCRIPTION": "Sets the threshold for excessive repeating characters (0.0-1.0).",
+    "CHARACTER_SPAM_THRESHOLD_OPTION_DESCRIPTION": "Ratio of repeating characters (e.g., 0.7 for 70%).",
+    "CHARACTER_SPAM_THRESHOLD_SET_SUCCESS": "✅ Character spam threshold successfully set to {threshold}%.",
+    "LINK_GROUP_DESCRIPTION": "Manages blacklisted links for spam detection.",
+    "LINK_ADD_SUBCOMMAND_DESCRIPTION": "Adds a link or domain to the blacklist.",
+    "LINK_REMOVE_SUBCOMMAND_DESCRIPTION": "Removes a link or domain from the blacklist.",
+    "LINK_LIST_SUBCOMMAND_DESCRIPTION": "Displays all blacklisted links.",
+    "LINK_OPTION_DESCRIPTION": "The full link or domain (e.g., \"malicious.com\" or \"phishing.link/scam\").",
+    "LINK_OPTION_DESCRIPTION_REMOVE": "The link or domain to remove.",
+    "link_added_success": "✅ Link/domain `{link}` has been added to the blacklist.",
+    "link_already_added": "⚠️ Link/domain `{link}` is already on the blacklist.",
+    "link_removed_success": "✅ Link/domain `{link}` has been removed from the blacklist.",
+    "link_not_found": "❌ Link/domain `{link}` was not found on the blacklist.",
+    "link_list": "🔗 **Blacklisted Links:**\n{links}",
+    "no_links_added": "No blacklisted links have been added yet.",
+    "already_enabled": "Spam detection is already enabled.",
+    "enabled_success": "✅ Spam detection has been successfully enabled.",
+    "already_disabled": "Spam detection is already disabled.",
+    "disabled_success": "✅ Spam detection has been successfully disabled.",
+    "RAID_GROUP_DESCRIPTION": "Manages raid protection settings.",
+    "RAID_ENABLE_SUBCOMMAND_DESCRIPTION": "Enables raid protection.",
+    "RAID_DISABLE_SUBCOMMAND_DESCRIPTION": "Disables raid protection.",
+    "RAID_SET_THRESHOLDS_SUBCOMMAND_DESCRIPTION": "Sets thresholds for raid detection.",
+    "RAID_MESSAGE_COUNT_OPTION_DESCRIPTION": "Number of similar messages to trigger detection.",
+    "RAID_TIME_PERIOD_OPTION_DESCRIPTION": "Time period for messages (e.g., \"15s\", \"1m\", \"5m\").",
+    "RAID_USER_COUNT_OPTION_DESCRIPTION": "Number of unique users sending similar messages.",
+    "RAID_STATUS_SUBCOMMAND_DESCRIPTION": "Displays current raid protection settings.",
+    "RAID_ALREADY_ENABLED": "Raid protection is already enabled.",
+    "RAID_ENABLED_SUCCESS": "✅ Raid protection has been successfully enabled.",
+    "RAID_ALREADY_DISABLED": "Raid protection is already disabled.",
+    "RAID_DISABLED_SUCCESS": "✅ Raid protection has been successfully disabled.",
+    "RAID_INVALID_TIME_PERIOD": "Invalid time period. Please use formats like \"15s\", \"1m\", \"5m\" (maximum 1 hour).",
+    "RAID_THRESHOLDS_SET_SUCCESS": "✅ Raid thresholds successfully set: {messageCount} messages in {timePeriod} from {userCount} users.",
+    "RAID_STATUS_TITLE": "🛡️ Raid Protection Status",
+    "RAID_STATUS_DESCRIPTION": "Raid protection is **{status}**.",
+    "RAID_FIELD_MESSAGE_COUNT": "Message Count",
+    "RAID_FIELD_TIME_PERIOD": "Time Period",
+    "RAID_FIELD_USER_COUNT": "User Count",
+    "STATUS_ENABLED_TEXT": "ENABLED ✅",
+    "STATUS_DISABLED_TEXT": "DISABLED ❌"
+  },
+  "spam_detection": {
+    "LINK_DELETED_TITLE": "Message Deleted: Blacklisted Link",
+    "LINK_DELETED_DESCRIPTION": "The message from **{userTag}** in {channelMention} was deleted because it contained a blacklisted link: `{link}`.",
+    "ORIGINAL_CONTENT": "Original Content",
+    "LINK_DELETED_USER_NOTIFICATION": "Your message was deleted because it contained a blacklisted link (`{link}`). Please do not post such links.",
+    "RAID_DETECTED_TITLE": "🚨 RAID DETECTED! 🚨",
+    "RAID_DETECTED_DESCRIPTION": "A potential raid has been detected!\n\n**Details:**\n- {messageCount} similar messages\n- from {userCount} unique users\n- within {timePeriod}",
+    "RAID_DETECTED_CONTENT": "Content",
+    "RAID_DETECTED_USERS": "Involved Users",
+    "CHARACTER_SPAM_DELETED_TITLE": "Message Deleted: Character Spam",
+    "CHARACTER_SPAM_DELETED_DESCRIPTION": "The message from **{userTag}** in {channelMention} was deleted because it contained excessive repeating characters.",
+    "CHARACTER_SPAM_USER_NOTIFICATION": "Your message was deleted because it contained excessive repeating characters. Please avoid character spam."
+  },
+  "help_command": {
+    "DESCRIPTION": "Displays a list of commands and their usage.",
+    "SELECT_MENU_PLACEHOLDER": "Select a help page...",
+    "PAGE_FOOTER": "Page {currentPage} of {totalPages}",
+    "PAGE_0_TITLE": "General Commands",
+    "PAGE_0_DESCRIPTION": "Here you'll find general commands and information about the bot.\n\n**Available Commands:**\n`/help` - Displays this help page.\n`/ping` - Checks the bot's latency.\n`/info` - Displays information about the bot.",
+    "PAGE_0_SHORT_DESCRIPTION": "General commands and bot information.",
+    "PAGE_1_TITLE": "Admin Commands",
+    "PAGE_1_DESCRIPTION": "Commands for server management and configuration.\n\n**Available Commands:**\n`/autorole` - Manages automatic role assignment for new members.\n`/ban` - Bans a user from the server.\n`/unban` - Unbans a user via user ID.\n`/language` - Sets the bot language for this server.\n`/setlog` - Sets or removes the log channel for various events.\n`/ticket-setup` - Sets up the ticket system for the server.",
+    "PAGE_1_SHORT_DESCRIPTION": "Server management and configuration.",
+    "PAGE_2_TITLE": "Moderation Commands",
+    "PAGE_2_DESCRIPTION": "Commands for moderating users and messages.\n\n**Available Commands:**\n`/warn` - Warns a user.\n`/mute` - Temporarily mutes a user.\n`/kick` - Kicks a user from the server.\n`/purge` - Deletes a specified number of messages.",
+    "PAGE_2_SHORT_DESCRIPTION": "User and message moderation.",
+    "PAGE_3_TITLE": "Ticket System",
+    "PAGE_3_DESCRIPTION": "Information and commands for setting up and managing the ticket system.\n\n**Available Commands:**\n`/ticket-setup` - Sets up the ticket system.\n`/ticket` (in a ticket channel) - Commands for managing an open ticket (close, add, remove).",
+    "PAGE_3_SHORT_DESCRIPTION": "Ticket setup and management.",
+    "PAGE_4_TITLE": "JTC (Join to Create)",
+    "PAGE_4_DESCRIPTION": "Information and commands for the Join-to-Create voice channel system.\n\n**Available Commands:**\n`/jtc-setup` - Sets up the Join to Create system.\n`/jtc-setup disable` - Disables the JTC system.\n`/jtc-setup status` - Shows the current JTC status.",
+    "PAGE_4_SHORT_DESCRIPTION": "Dynamic voice channels."
   }
 }

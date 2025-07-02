@@ -1,3 +1,4 @@
+// utils/jtcUtils.js
 const fs = require('fs');
 const path = require('path');
 
@@ -9,6 +10,19 @@ let jtcConfigs = {}; // In-Memory-Speicher für die Konfigurationen
  */
 function loadJTCConfig() {
     console.log(`[JTC Config] Attempting to load JTC config from: ${configPath}`);
+    // SICHERSTELLEN, dass das Verzeichnis existiert, bevor wir versuchen zu lesen/schreiben
+    const dir = path.dirname(configPath);
+    if (!fs.existsSync(dir)) {
+        try {
+            fs.mkdirSync(dir, { recursive: true });
+            console.log(`[JTC Config] Created directory: ${dir}`);
+        } catch (e) {
+            console.error(`[JTC Config ERROR] Error creating directory ${dir}:`, e);
+            // Wenn das Verzeichnis nicht erstellt werden kann, können wir die Datei auch nicht speichern.
+            // Der Bot sollte hier aber nicht abstürzen, nur warnen.
+        }
+    }
+
     if (fs.existsSync(configPath)) {
         try {
             jtcConfigs = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -20,6 +34,13 @@ function loadJTCConfig() {
     } else {
         console.warn(`[JTC Config] jtcConfig.json not found at ${configPath}. Starting with empty JTC config.`);
         jtcConfigs = {};
+        // Optional: Leere Datei direkt erstellen, um weitere "not found" Warnungen zu vermeiden
+        try {
+            fs.writeFileSync(configPath, JSON.stringify({}, null, 2), 'utf8');
+            console.log(`[JTC Config] Created empty jtcConfig.json.`);
+        } catch (e) {
+            console.error(`[JTC Config ERROR] Error creating empty jtcConfig.json:`, e);
+        }
     }
 }
 
@@ -28,10 +49,12 @@ function loadJTCConfig() {
  */
 function saveJTCConfig() {
     try {
-        const dir = path.dirname(configPath);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
+        // Das Verzeichnis sollte bereits von loadJTCConfig() erstellt worden sein,
+        // aber ein doppelter Check ist nicht schädlich. Besser noch, die Erstellung in loadJTCConfig() zentralisieren.
+        // const dir = path.dirname(configPath);
+        // if (!fs.existsSync(dir)) {
+        //     fs.mkdirSync(dir, { recursive: true }); // Diesen Aufruf in loadJTCConfig() verlagern
+        // }
         fs.writeFileSync(configPath, JSON.stringify(jtcConfigs, null, 2), 'utf8');
         console.log(`[JTC Config] Saved JTC configuration.`);
     } catch (e) {
@@ -78,12 +101,9 @@ function deleteJTCConfigForGuild(guildId) {
 loadJTCConfig();
 
 module.exports = {
-    loadJTCConfig, // Exponiere, falls du es manuell neu laden möchtest
+    loadJTCConfig,
     getJTCConfigForGuild,
     setJTCConfigForGuild,
     deleteJTCConfigForGuild,
-    // (Optional) Wenn getJTCConfig() im voiceStateUpdate verwendet wird, muss es umbenannt werden
-    // oder eine separate Funktion dafür erstellt werden, die jtcConfigs direkt zurückgibt.
-    // Aber es ist besser, getJTCConfigForGuild(guild.id) zu verwenden.
-    jtcConfigs // Exponiere für voiceStateUpdate, um alle Konfigurationen zu erhalten
+    jtcConfigs // Exportiert für direkten Zugriff, falls erforderlich (siehe Anmerkungen oben)
 };

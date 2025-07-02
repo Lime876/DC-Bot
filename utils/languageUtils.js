@@ -1,8 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-// const log = require('./logUtils'); // Uncomment if logUtils is stable
 
-const languagesPath = path.resolve(__dirname, '..', 'locales'); // Neue Zeile
+const languagesPath = path.resolve(__dirname, '..', 'locales');
 
 const guildLanguagesConfigPath = path.join(__dirname, '../data/guildLanguages.json'); // This path should be correct if guildLanguages.json is directly in 'data'
 
