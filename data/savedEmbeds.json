@@ -1,24 +1,2 @@
 {
-    "401409059884105731": {
-        "acaa21ad-bb25-4c7d-95fa-92025a5579bf": {
-            "name": "Embed 1",
-            "embed": {
-                "title": "overtime",
-                "description": "ccool",
-                "color": 39423
-            },
-            "lastActivity": 1750787687424
-        }
-    },
-    "497089779473580042": {
-        "f9d14a26-ef55-401f-afcb-39a31456e77d": {
-            "name": "Embed 1",
-            "embed": {
-                "title": "Embed-Titel",
-                "description": "Dies ist die Standardbeschreibung. Bearbeiten Sie sie über das Menü!",
-                "color": 39423
-            },
-            "lastActivity": 1750788542070
-        }
-    }
 }

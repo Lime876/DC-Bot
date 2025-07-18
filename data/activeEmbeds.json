@@ -1,15 +1,2 @@
 {
-    "497089779473580042": {
-        "undefined": {
-            "channelId": "1362226825039974470",
-            "targetChannelId": "1362226825039974470",
-            "embed": {
-                "title": "Embed-Titel",
-                "description": "Dies ist die Standardbeschreibung. Bearbeiten Sie sie über das Menü!",
-                "color": 39423
-            },
-            "lang": "de",
-            "lastActivity": 1750774572298
-        }
-    }
 }
