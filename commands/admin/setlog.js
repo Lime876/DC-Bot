@@ -1,67 +1,82 @@
 // commands/utility/setlog.js
-const { SlashCommandBuilder, PermissionsBitField, ChannelType, MessageFlags } = require('discord.js'); // MessageFlags importieren
+const { SlashCommandBuilder, PermissionsBitField, ChannelType, MessageFlags } = require('discord.js');
 const { setLogChannelId } = require('../../utils/config.js');
 const { getGuildLanguage, getTranslatedText } = require('../../utils/languageUtils');
+const logger = require('../../utils/logger');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('setlog')
         .setDescription('Setzt oder entfernt den Log-Kanal für verschiedene Ereignisse.')
-        .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild) // Nur für Server-Manager
+        .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
         .addStringOption(option =>
             option.setName('log_type')
-                .setDescription('Der Typ des Log-Ereignisses (z.B. message_delete, member_join)')
+                .setDescription('Der Typ des Log-Ereignisses (z.B. message_delete, member_join).')
                 .setRequired(true)
                 .addChoices(
-                    { name: 'Nachricht gelöscht', value: 'message_delete' },
-                    { name: 'Nachricht bearbeitet', value: 'message_edit' },
-                    { name: 'Mitglied beigetreten', value: 'member_join' },
-                    { name: 'Mitglied verlassen', value: 'member_leave' },
-                    { name: 'Bann', value: 'member_ban' },
-                    { name: 'Entbann', value: 'member_unban' },
-                    { name: 'Kanal erstellt', value: 'channel_create' },
-                    { name: 'Kanal gelöscht', value: 'channel_delete' },
-                    { name: 'Rolle erstellt', value: 'role_create' },
-                    { name: 'Rolle gelöscht', value: 'role_delete' },
-                    { name: 'Server Updates', value: 'guild_update' },
-                    { name: 'Sprachkanal beigetreten', value: 'voice_join' },
-                    { name: 'Sprachkanal verlassen', value: 'voice_leave' },
-                    { name: 'Sprachkanal gewechselt', value: 'voice_move' },
-                    // Füge hier weitere Log-Typen hinzu, wenn dein Bot sie unterstützt
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_MESSAGE_DELETE'), value: 'message_delete' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_MESSAGE_EDIT'), value: 'message_edit' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_MEMBER_JOIN'), value: 'member_join' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_MEMBER_LEAVE'), value: 'member_leave' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_MEMBER_BAN'), value: 'member_ban' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_MEMBER_UNBAN'), value: 'member_unban' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_CHANNEL_CREATE'), value: 'channel_create' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_CHANNEL_DELETE'), value: 'channel_delete' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_CHANNEL_UPDATE'), value: 'channel_update' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_ROLE_CREATE'), value: 'role_create' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_ROLE_DELETE'), value: 'role_delete' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_ROLE_UPDATE'), value: 'role_update' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_GUILD_UPDATE'), value: 'guild_update' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_VOICE_JOIN'), value: 'voice_join' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_VOICE_LEAVE'), value: 'voice_leave' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_VOICE_MOVE'), value: 'voice_move' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_VOICE_STREAM_START'), value: 'voice_stream_start' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_VOICE_STREAM_STOP'), value: 'voice_stream_stop' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_VOICE_VIDEO_START'), value: 'voice_video_start' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_VOICE_VIDEO_STOP'), value: 'voice_video_stop' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_MEMBER_UPDATE'), value: 'member_update' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_MESSAGE_REACTION_ADD'), value: 'message_reaction_add' },
+                    { name: getTranslatedText('de', 'setlog_command.LOG_TYPE_CHOICE_MESSAGE_REACTION_REMOVE'), value: 'message_reaction_remove' }
                 ))
         .addChannelOption(option =>
             option.setName('channel')
                 .setDescription('Der Kanal, der als Log-Kanal festgelegt werden soll (leer lassen zum Entfernen).')
-                .addChannelTypes(ChannelType.GuildText) // Nur Textkanäle erlauben
+                .addChannelTypes(ChannelType.GuildText)
                 .setRequired(false)),
 
     async execute(interaction) {
-        const lang = getGuildLanguage(interaction.guildId);
+        const lang = await getGuildLanguage(interaction.guildId);
         const logType = interaction.options.getString('log_type');
         const channel = interaction.options.getChannel('channel');
 
-        // Überprüfe Berechtigungen
         if (!interaction.memberPermissions.has(PermissionsBitField.Flags.ManageGuild)) {
-            await interaction.reply({
-                content: getTranslatedText(lang, 'setlog.NO_PERMISSION'),
-                flags: [MessageFlags.Ephemeral] // Korrektur: ephemeral: true durch flags ersetzen
+            return interaction.reply({
+                content: getTranslatedText(lang, 'permissions.MISSING_PERMISSION_SINGULAR', { permission: getTranslatedText(lang, 'permissions.MANAGE_GUILD') }),
+                flags: [MessageFlags.Ephemeral]
             });
-            return;
         }
 
-        if (channel) {
-            // Setze den Log-Kanal
-            setLogChannelId(interaction.guild.id, logType, channel.id);
+        try {
+            if (channel) {
+                setLogChannelId(interaction.guild.id, logType, channel.id);
+                await interaction.reply({
+                    content: getTranslatedText(lang, 'setlog_command.SET_SUCCESS', { logType: getTranslatedText(lang, `setlog_command.LOG_TYPE_CHOICE_${logType.toUpperCase()}`), channelMention: channel.toString() }),
+                    flags: [MessageFlags.Ephemeral]
+                });
+                logger.info(`[SetLog Command] Log-Kanal für '${logType}' in Gilde ${interaction.guild.id} auf ${channel.id} gesetzt. (PID: ${process.pid})`);
+            } else {
+                setLogChannelId(interaction.guild.id, logType, null);
+                await interaction.reply({
+                    content: getTranslatedText(lang, 'setlog_command.REMOVE_SUCCESS', { logType: getTranslatedText(lang, `setlog_command.LOG_TYPE_CHOICE_${logType.toUpperCase()}`) }),
+                    flags: [MessageFlags.Ephemeral]
+                });
+                logger.info(`[SetLog Command] Log-Kanal für '${logType}' in Gilde ${interaction.guild.id} entfernt. (PID: ${process.pid})`);
+            }
+        } catch (error) {
+            logger.error(`[SetLog Command] Fehler beim Setzen/Entfernen des Log-Kanals für '${logType}' in Gilde ${interaction.guild.id}:`, error);
             await interaction.reply({
-                content: getTranslatedText(lang, 'setlog.SET_SUCCESS', { logType: logType, channelMention: channel.toString() }),
-                flags: [MessageFlags.Ephemeral] // Korrektur: ephemeral: true durch flags ersetzen
-            });
-        } else {
-            // Entferne den Log-Kanal
-            setLogChannelId(interaction.guild.id, logType, null);
-            await interaction.reply({
-                content: getTranslatedText(lang, 'setlog.REMOVE_SUCCESS', { logType: logType }),
-                flags: [MessageFlags.Ephemeral] // Korrektur: ephemeral: true durch flags ersetzen
+                content: getTranslatedText(lang, 'bot_messages.ERROR_OCCURRED'),
+                flags: [MessageFlags.Ephemeral]
             });
         }
     },

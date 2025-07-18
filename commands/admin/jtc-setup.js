@@ -39,7 +39,7 @@ module.exports = {
         ),
     async execute(interaction) {
         const guild = interaction.guild;
-        const lang = getGuildLanguage(guild.id);
+        const lang = await getGuildLanguage(guild.id); // make sure to await if getGuildLanguage is async
 
         const subcommand = interaction.options.getSubcommand();
 

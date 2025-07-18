@@ -17,7 +17,7 @@ module.exports = {
         ))
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
-      category: 'Moderation', // <-- NEU: Füge diese Zeile hinzu
+      category: 'Moderation',
 
   async execute(interaction) {
     const aktion = interaction.options.getString('aktion');

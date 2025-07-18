@@ -116,7 +116,7 @@ module.exports = {
                 );
             });
 
-            await interaction.reply({ embeds: [shopEmbed] });
+            await interaction.reply({ embeds: [shopEmbed], ephemeral: true });
 
         } else if (subcommand === 'buy') {
             const itemId = interaction.options.getString('item_id');
@@ -180,7 +180,7 @@ module.exports = {
                 .setTimestamp()
                 .setFooter({ text: 'Wirtschaftssystem' });
 
-            await interaction.reply({ embeds: [buyEmbed], ephemeral: false });
+            await interaction.reply({ embeds: [buyEmbed], ephemeral: true });
 
         } else if (subcommand === 'add_role_item') {
             const role = interaction.options.getRole('rolle');
@@ -228,7 +228,7 @@ module.exports = {
                 .setTimestamp()
                 .setFooter({ text: 'Shop-Management' });
 
-            await interaction.reply({ embeds: [addEmbed], ephemeral: false });
+            await interaction.reply({ embeds: [addEmbed], ephemeral: true });
 
         } else if (subcommand === 'remove_item') {
             const itemId = interaction.options.getString('item_id');
@@ -249,7 +249,7 @@ module.exports = {
                 .setTimestamp()
                 .setFooter({ text: 'Shop-Management' });
 
-            await interaction.reply({ embeds: [removeEmbed], ephemeral: false });
+            await interaction.reply({ embeds: [removeEmbed], ephemeral: true });
         }
     },
 };

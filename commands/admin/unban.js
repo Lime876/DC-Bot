@@ -1,52 +1,82 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+// commands/moderation/unban.js
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require('discord.js');
+const { getGuildLanguage, getTranslatedText } = require('../../utils/languageUtils');
+const logger = require('../../utils/logger'); // Importiere den Logger
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('unban')
-    .setDescription('Entbannt einen Benutzer über die Benutzer-ID')
-    .addStringOption(option =>
-      option.setName('userid')
-        .setDescription('Die ID des Benutzers, der entbannt werden soll')
-        .setRequired(true))
-    .addStringOption(option =>
-      option.setName('grund')
-        .setDescription('Grund für das Entbannen')
-        .setRequired(false))
-    .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers),
+    data: new SlashCommandBuilder()
+        .setName('unban')
+        .setDescription('Entbannt einen Benutzer über die Benutzer-ID') // Dies wird später über getTranslatedText geholt
+        .addStringOption(option =>
+            option.setName('userid')
+                .setDescription('Die ID des Benutzers, der entbannt werden soll') // Übersetzbar
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('grund')
+                .setDescription('Grund für das Entbannen') // Übersetzbar
+                .setRequired(false))
+        .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers), // Erfordert die Berechtigung, Mitglieder zu bannen
 
-category: 'Admin', // <-- NEU: Füge diese Zeile hinzu
+    category: 'admin', // Kategorie für den Befehl
 
-  async execute(interaction) {
-    const userId = interaction.options.getString('userid');
-    const grund = interaction.options.getString('grund') || 'Kein Grund angegeben';
+    async execute(interaction) {
+        const lang = await getGuildLanguage(interaction.guildId); // Sprache der Gilde abrufen
 
-    try {
-      const ban = await interaction.guild.bans.fetch(userId);
-      if (!ban) {
-        return interaction.reply({ content: '❌ Benutzer ist nicht gebannt.', ephemeral: true });
-      }
+        // Übersetze die Beschreibung und Optionen des Befehls dynamisch für die Anzeige im Discord-Client
+        // Dies ist wichtig, damit der Befehl in der richtigen Sprache angezeigt wird, wenn er zum ersten Mal bereitgestellt wird.
+        module.exports.data
+            .setDescription(getTranslatedText(lang, 'unban_command.DESCRIPTION'))
+            .options[0].setDescription(getTranslatedText(lang, 'unban_command.USER_ID_OPTION_DESCRIPTION'));
+        module.exports.data
+            .options[1].setDescription(getTranslatedText(lang, 'unban_command.REASON_OPTION_DESCRIPTION'));
 
-      await interaction.guild.members.unban(userId, grund);
+        const userId = interaction.options.getString('userid');
+        const reason = interaction.options.getString('grund') || getTranslatedText(lang, 'unban_command.NO_REASON_PROVIDED');
 
-      const embed = new EmbedBuilder()
-        .setColor(0x00FF00)
-        .setTitle('🔓 Benutzer entbannt')
-        .addFields(
-          { name: 'Benutzer-ID', value: userId, inline: true },
-          { name: 'Von', value: `${interaction.user.tag}`, inline: true },
-          { name: 'Grund', value: grund }
-        )
-        .setTimestamp();
+        // Überprüfe, ob der Bot die Berechtigung hat, Mitglieder zu entbannen
+        if (!interaction.guild.members.me.permissions.has(PermissionFlagsBits.BanMembers)) {
+            logger.warn(`[Unban Command] Bot hat nicht die Berechtigung 'BanMembers' in Gilde ${interaction.guild.id}. (PID: ${process.pid})`);
+            return interaction.reply({
+                content: getTranslatedText(lang, 'unban_command.NO_PERMISSION_BOT'),
+                flags: [MessageFlags.Ephemeral]
+            });
+        }
 
-      await interaction.reply({ embeds: [embed] });
+        try {
+            // Versuche, den Bann zu fetchen, um zu überprüfen, ob der Benutzer tatsächlich gebannt ist
+            const ban = await interaction.guild.bans.fetch(userId);
+            if (!ban) {
+                return interaction.reply({
+                    content: getTranslatedText(lang, 'unban_command.USER_NOT_BANNED'),
+                    flags: [MessageFlags.Ephemeral]
+                });
+            }
 
-      // Optional: Logging
-      const logChannelId = process.env.LOG_CHANNEL_ID;
-      const logChannel = interaction.guild.channels.cache.get(logChannelId);
-      if (logChannel) logChannel.send({ embeds: [embed] }).catch(console.error);
-    } catch (error) {
-      console.error(error);
-      return interaction.reply({ content: '❌ Fehler beim Entbannen. Stelle sicher, dass die ID korrekt ist.', ephemeral: true });
-    }
-  }
+            // Entbanne den Benutzer
+            await interaction.guild.members.unban(userId, reason);
+
+            // Sende nur eine Bestätigung an den Benutzer, der den Befehl ausgeführt hat
+            await interaction.reply({
+                content: getTranslatedText(lang, 'unban_command.SUCCESS', { userId: userId, reason: reason }),
+                flags: [MessageFlags.Ephemeral] // Nur für den Benutzer sichtbar
+            });
+            logger.info(`[Unban Command] Benutzer mit ID ${userId} in Gilde ${interaction.guild.name} entbannt durch ${interaction.user.tag}. Grund: ${reason}. (PID: ${process.pid})`);
+
+            // Das Logging an den Log-Kanal wird vom 'guildBanRemove' Event-Handler übernommen.
+
+        } catch (error) {
+            logger.error(`[Unban Command] Fehler beim Entbannen von Benutzer ID ${userId} in Gilde ${interaction.guild.id}:`, error);
+            // Überprüfe, ob der Fehler darauf hinweist, dass der Benutzer nicht gebannt ist (z.B. Discord API Error 10026 Unknown Ban)
+            if (error.code === 10026) { // Discord API Error Code for Unknown Ban
+                return interaction.reply({
+                    content: getTranslatedText(lang, 'unban_command.USER_NOT_BANNED'),
+                    flags: [MessageFlags.Ephemeral]
+                });
+            }
+            await interaction.reply({
+                content: getTranslatedText(lang, 'bot_messages.ERROR_OCCURRED'),
+                flags: [MessageFlags.Ephemeral]
+            });
+        }
+    },
 };

@@ -1,53 +1,79 @@
 // events/messageReactionRemove.js
-const { Events } = require('discord.js');
+const { Events, EmbedBuilder, Partials } = require('discord.js');
+const { getLogChannelId } = require('../utils/config.js');
+const { getGuildLanguage, getTranslatedText } = require('../utils/languageUtils');
+const logger = require('../utils/logger');
 
 module.exports = {
     name: Events.MessageReactionRemove,
-    async execute(reaction, user, client) { // 'client' als drittes Argument hinzugefügt
-        // Ignoriere Reaktionen von Bots
-        if (user.bot) return;
-
-        // Wenn die Nachricht oder Reaktion ein Partial ist, hole die vollständigen Daten
+    // Füge Partials hinzu, damit der Client auch auf Reaktionen auf nicht gecachte Nachrichten reagiert
+    // Dies sollte in der Client-Initialisierung in index.js konfiguriert werden:
+    // partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.User],
+    async execute(reaction, user) {
+        // Wenn die Reaktion oder der Benutzer ein Partial ist, hole die vollständigen Daten
         if (reaction.partial) {
             try {
                 await reaction.fetch();
             } catch (error) {
-                console.error('Fehler beim Fetchen der Partial-Reaction (Remove):', error);
+                logger.error(`[MessageReactionRemove Event] Fehler beim Fetchen der Partial-Reaktion:`, error);
                 return;
             }
         }
-        if (reaction.message.partial) {
-            try {
-                await reaction.message.fetch();
-            } catch (error) {
-                console.error('Fehler beim Fetchen der Partial-Nachricht (Remove):', error);
-                return;
-            }
-        }
-
-        // Wenn der Benutzer ein Partial ist, hole die vollständigen Daten (optional, aber gut für Robustheit)
         if (user.partial) {
             try {
                 await user.fetch();
             } catch (error) {
-                console.error('Fehler beim Fetchen des Partial-Users (Remove):', error);
+                logger.error(`[MessageReactionRemove Event] Fehler beim Fetchen des Partial-Benutzers:`, error);
                 return;
             }
         }
 
-        // Jetzt können wir sicher auf reaction.message und user zugreifen
-        const message = reaction.message;
-        const emoji = reaction.emoji.name;
-        const guild = message.guild;
+        // Ignoriere Reaktionen von Bots
+        if (user.bot) return;
 
-        // Beispiel: Hier könntest du auf das Entfernen von Reaktionen reagieren
-        // if (message.id === 'DEINE_NACHRICHTEN_ID' && emoji === '✅') {
-        //     const member = guild.members.cache.get(user.id);
-        //     if (member) {
-        //         // Tu etwas, z.B. eine Rolle entfernen
-        //         // await member.roles.remove('ROLLEN_ID');
-        //         console.log(`${user.tag} hat seine Reaktion entfernt.`);
-        //     }
-        // }
+        const message = reaction.message;
+        // Ignoriere Reaktionen in DMs (keine Gilde)
+        if (!message.guild) return;
+
+        const guild = message.guild;
+        const lang = await getGuildLanguage(guild.id);
+        const logChannelId = getLogChannelId(guild.id, 'message_reaction_remove');
+
+        if (!logChannelId) {
+            // logger.debug(`[MessageReactionRemove Event] Kein Log-Kanal für 'message_reaction_remove' in Gilde ${guild.id} konfiguriert. (PID: ${process.pid})`);
+            return;
+        }
+
+        const logChannel = guild.channels.cache.get(logChannelId);
+        if (!logChannel || !logChannel.isTextBased()) {
+            logger.warn(`[MessageReactionRemove Event] Konfigurierter Log-Kanal ${logChannelId} für Gilde ${guild.id} ist ungültig oder kein Textkanal. (PID: ${process.pid})`);
+            return;
+        }
+
+        const emojiIdentifier = reaction.emoji.id ? `<:${reaction.emoji.name}:${reaction.emoji.id}>` : reaction.emoji.name;
+        const messageContent = message.content ? message.content.substring(0, 500) + (message.content.length > 500 ? '...' : '') : getTranslatedText(lang, 'message_reaction_remove.NO_CONTENT');
+        const messageLink = `https://discord.com/channels/${guild.id}/${message.channel.id}/${message.id}`;
+
+
+        const embed = new EmbedBuilder()
+            .setColor(0xFF0000) // Rot für entfernte Reaktionen
+            .setTitle(getTranslatedText(lang, 'message_reaction_remove.LOG_TITLE'))
+            .setDescription(getTranslatedText(lang, 'message_reaction_remove.LOG_DESCRIPTION'))
+            .addFields(
+                { name: getTranslatedText(lang, 'message_reaction_remove.FIELD_USER'), value: `${user.tag} (<@${user.id}>)`, inline: true },
+                { name: getTranslatedText(lang, 'message_reaction_remove.FIELD_EMOJI'), value: emojiIdentifier, inline: true },
+                { name: getTranslatedText(lang, 'message_reaction_remove.FIELD_CHANNEL'), value: message.channel.toString(), inline: true },
+                { name: getTranslatedText(lang, 'message_reaction_remove.FIELD_MESSAGE_ID'), value: `[${message.id}](${messageLink})`, inline: false },
+                { name: getTranslatedText(lang, 'message_reaction_remove.FIELD_MESSAGE_CONTENT'), value: messageContent, inline: false }
+            )
+            .setTimestamp()
+            .setFooter({ text: `Benutzer ID: ${user.id} | Nachricht ID: ${message.id}` });
+
+        try {
+            await logChannel.send({ embeds: [embed] });
+            logger.info(`[MessageReactionRemove Event] Reaktion ${emojiIdentifier} von ${user.tag} von Nachricht ${message.id} in Gilde ${guild.name} entfernt. (PID: ${process.pid})`);
+        } catch (error) {
+            logger.error(`[MessageReactionRemove Event] Fehler beim Senden des Reaktions-Remove-Logs für ${user.tag}:`, error);
+        }
     },
 };

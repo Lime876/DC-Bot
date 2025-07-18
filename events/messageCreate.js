@@ -1,330 +1,261 @@
 // events/messageCreate.js
-const { Events, EmbedBuilder, PermissionsBitField } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-const { getGuildLanguage, getTranslatedText } = require('../utils/languageUtils');
-const { getGuildSpamConfig } = require('../commands/Moderation/spamconfig');
-const { spamDeletedMessageIds, recentMessages } = require('../utils/sharedState');
+const { Events, MessageFlags } = require('discord.js');
+const { getSpamConfig } = require('../commands/Moderation/spamconfig'); // Importiere getSpamConfig
+const { getTranslatedText, getGuildLanguage } = require('../utils/languageUtils');
+const { logEvent } = require('../utils/logUtils'); // Importiere logEvent
+const logger = require('../utils/logger'); // Importiere den neuen Logger
 
-const levelsPath = path.join(__dirname, '../data/levels.json');
-const levelRolesPath = path.join(__dirname, '../data/levelRoles.json');
-const cooldowns = new Set();
-
-// XP-Einstellungen
-const BASE_XP_PER_MESSAGE = 10;
-const XP_PER_CHARACTER = 0.5;
-const COOLDOWN_SECONDS = 30;
-const MIN_MESSAGE_LENGTH = 8;
-
-/**
- * Überprüft, ob eine Nachricht übermäßig viele sich wiederholende Zeichen enthält (Zeichen-Spam).
- * @param {string} content Der Inhalt der Nachricht.
- * @param {number} threshold Der Schwellenwert (z.B. 0.7 für 70%).
- * @returns {boolean} True, wenn Zeichen-Spam erkannt wurde, sonst false.
- */
-const isCharacterSpam = (content, threshold) => {
-    if (content.length < 10) return false; // Nachrichten unter 10 Zeichen ignorieren, um False Positives zu vermeiden
-
-    const cleanedContent = content.replace(/\s/g, ''); // Leerzeichen entfernen
-    if (cleanedContent.length === 0) return false;
-
-    const charCounts = {};
-    for (const char of cleanedContent) {
-        charCounts[char] = (charCounts[char] || 0) + 1;
-    }
-
-    // Finde das Zeichen, das am häufigsten vorkommt
-    let maxCount = 0;
-    for (const char in charCounts) {
-        if (charCounts[char] > maxCount) {
-            maxCount = charCounts[char];
-        }
-    }
-
-    // Berechne das Verhältnis des häufigsten Zeichens zur Gesamtlänge
-    const ratio = maxCount / cleanedContent.length;
-    return ratio >= threshold;
-};
-
-
-// Funktion zum Laden/Speichern der Leveldaten
-const loadLevels = () => {
-    if (fs.existsSync(levelsPath)) {
-        try {
-            return JSON.parse(fs.readFileSync(levelsPath, 'utf8'));
-        } catch (e) {
-            console.error(`Fehler beim Parsen von ${levelsPath}:`, e);
-            return {};
-        }
-    }
-    return {};
-};
-
-const saveLevels = (levels) => {
-    try {
-        fs.writeFileSync(levelsPath, JSON.stringify(levels, null, 2));
-    } catch (e) {
-        console.error(`Fehler beim Schreiben in ${levelsPath}:`, e);
-    }
-};
-
-// Funktion zum Laden der Level-Rollen-Daten
-const loadLevelRoles = () => {
-    if (fs.existsSync(levelRolesPath)) {
-        try {
-            return JSON.parse(fs.readFileSync(levelRolesPath, 'utf8'));
-        } catch (e) {
-            console.error(`Fehler beim Parsen von ${levelRolesPath}:`, e);
-            return {};
-        }
-    }
-    return {};
-};
-
-// Funktion zur Berechnung der benötigten XP für ein bestimmtes Level
-const getRequiredXP = (level) => {
-    return 5 * Math.pow(level, 2) + 50 * level + 100;
-};
+// In-memory Speicher für Raid-Erkennung
+const raidDetection = new Map(); // guildId -> { users: Map<userId, { messages: Array<{ content: string, timestamp: number }>> } }
 
 module.exports = {
     name: Events.MessageCreate,
     async execute(message) {
-        // Ignoriere Bots, Nachrichten ohne Gilde oder leeren Inhalt
-        if (message.author.bot || !message.guild || message.content.length === 0) return;
+        // Ignoriere Bots und DM-Nachrichten
+        if (message.author.bot || !message.guild) return;
 
         const guildId = message.guild.id;
-        const lang = getGuildLanguage(guildId);
-        const spamConfig = getGuildSpamConfig(guildId);
+        const lang = await getGuildLanguage(guildId);
+        const spamConfig = getSpamConfig(guildId);
 
-        // --- Start der Spam-Erkennungslogik ---
-        if (spamConfig.enabled) {
-            // 1. Blacklisted Links überprüfen
-            if (spamConfig.blacklistedLinks && spamConfig.blacklistedLinks.length > 0) {
-                const messageContentLower = message.content.toLowerCase();
-                for (const link of spamConfig.blacklistedLinks) {
-                    const normalizedBlacklistedLink = link.replace(/^(https?:\/\/)?(www\.)?/i, '').replace(/\/$/, '');
-                    if (messageContentLower.includes(normalizedBlacklistedLink.toLowerCase())) {
-                        try {
-                            if (!message.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
-                                console.warn(`[Spam Detection] Bot lacks ManageMessages permission in channel ${message.channel.name} (${message.channel.id}). Cannot delete message with blacklisted link.`);
-                                return;
-                            }
+        if (!spamConfig.enabled) {
+            return; // Spam-Erkennung ist nicht aktiviert
+        }
 
-                            spamDeletedMessageIds.add(message.id);
-                            await message.delete();
+        // 1. Link-Spam-Erkennung
+        if (spamConfig.blacklistedLinks && spamConfig.blacklistedLinks.length > 0) {
+            const messageContent = message.content.toLowerCase();
+            for (const link of spamConfig.blacklistedLinks) {
+                if (messageContent.includes(link.toLowerCase())) {
+                    try {
+                        await message.delete();
+                        logger.info(`[SpamDetection] Nachricht von ${message.author.tag} gelöscht (Blacklisted Link: ${link}).`);
 
-                            if (spamConfig.moderationLogChannelId) {
-                                const logChannel = await message.guild.channels.fetch(spamConfig.moderationLogChannelId).catch(() => null);
-                                if (logChannel && logChannel.isTextBased()) {
-                                    const logEmbed = new EmbedBuilder()
-                                        .setColor('Red')
-                                        .setTitle(getTranslatedText(lang, 'spam_detection.LINK_DELETED_TITLE'))
-                                        .setDescription(getTranslatedText(lang, 'spam_detection.LINK_DELETED_DESCRIPTION', {
-                                            userTag: message.author.tag,
-                                            channelMention: message.channel.toString(),
-                                            link: normalizedBlacklistedLink
-                                        }))
-                                        .addFields(
-                                            { name: getTranslatedText(lang, 'general.USER_ID'), value: message.author.id, inline: true },
-                                            { name: getTranslatedText(lang, 'general.CHANNEL_ID'), value: message.channel.id, inline: true },
-                                            { name: getTranslatedText(lang, 'spam_detection.ORIGINAL_CONTENT'), value: `\`\`\`\n${message.content.substring(0, 1000)}\n\`\`\``, inline: false }
-                                        )
-                                        .setTimestamp();
-                                    await logChannel.send({ embeds: [logEmbed] });
-                                }
-                            }
-                            await message.channel.send({
-                                content: getTranslatedText(lang, 'spam_detection.LINK_DELETED_USER_NOTIFICATION', { link: normalizedBlacklistedLink }),
-                                ephemeral: true
-                            }).catch(e => console.error(`[Spam Detection] Konnte Nutzer nicht über gelöschten Link informieren:`, e));
+                        // Log-Nachricht an den konfigurierten Kanal senden
+                        await logEvent(guildId, 'message_delete', {
+                            logTitle: getTranslatedText(lang, 'spam_detection.LINK_DELETED_TITLE'),
+                            logDescription: getTranslatedText(lang, 'spam_detection.LINK_DELETED_DESCRIPTION', {
+                                userTag: message.author.tag,
+                                channelMention: message.channel.toString(),
+                                link: link
+                            }),
+                            fields: [
+                                { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_AUTHOR'), value: `${message.author.tag} (${message.author.id})`, inline: true },
+                                { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_CHANNEL'), value: message.channel.name, inline: true },
+                                { name: getTranslatedText(lang, 'spam_detection.ORIGINAL_CONTENT'), value: message.content || getTranslatedText(lang, 'message_delete.NO_CONTENT'), inline: false }
+                            ],
+                            color: 'Red'
+                        });
 
-                            return;
-                        } catch (error) {
-                            console.error(`[Spam Detection] Fehler beim Löschen der Nachricht oder Senden des Logs:`, error);
-                            return;
-                        }
+                        // Benachrichtigung an den Benutzer senden
+                        await message.author.send(getTranslatedText(lang, 'spam_detection.LINK_DELETED_USER_NOTIFICATION', { link }))
+                            .catch(err => logger.warn(`[SpamDetection] Konnte DM an ${message.author.tag} nicht senden:`, err.message));
+                        return; // Nachricht wurde gelöscht, weitere Prüfungen überspringen
+                    } catch (error) {
+                        logger.error(`[SpamDetection] Fehler beim Löschen der Nachricht oder Senden des Logs/DM (Link-Spam):`, error);
                     }
                 }
             }
+        }
 
-            // 2. Zeichen-Spam überprüfen (NEU)
-            if (spamConfig.characterSpamThreshold > 0 && isCharacterSpam(message.content, spamConfig.characterSpamThreshold)) {
-                try {
-                    if (!message.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
-                        console.warn(`[Spam Detection] Bot lacks ManageMessages permission in channel ${message.channel.name} (${message.channel.id}). Cannot delete message with character spam.`);
+        // 2. Zeichen-Spam-Erkennung
+        if (spamConfig.characterSpamThreshold > 0) {
+            const messageContent = message.content;
+            if (messageContent.length > 10) { // Nur prüfen, wenn Nachricht lang genug ist
+                const charCounts = {};
+                for (const char of messageContent) {
+                    charCounts[char] = (charCounts[char] || 0) + 1;
+                }
+
+                let maxRepeatingCharRatio = 0;
+                for (const char in charCounts) {
+                    const ratio = charCounts[char] / messageContent.length;
+                    if (ratio > maxRepeatingCharRatio) {
+                        maxRepeatingCharRatio = ratio;
+                    }
+                }
+
+                if (maxRepeatingCharRatio > spamConfig.characterSpamThreshold) {
+                    try {
+                        await message.delete();
+                        logger.info(`[SpamDetection] Nachricht von ${message.author.tag} gelöscht (Zeichen-Spam).`);
+
+                        await logEvent(guildId, 'message_delete', {
+                            logTitle: getTranslatedText(lang, 'spam_detection.CHARACTER_SPAM_DELETED_TITLE'),
+                            logDescription: getTranslatedText(lang, 'spam_detection.CHARACTER_SPAM_DELETED_DESCRIPTION', {
+                                userTag: message.author.tag,
+                                channelMention: message.channel.toString()
+                            }),
+                            fields: [
+                                { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_AUTHOR'), value: `${message.author.tag} (${message.author.id})`, inline: true },
+                                { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_CHANNEL'), value: message.channel.name, inline: true },
+                                { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_CONTENT'), value: message.content || getTranslatedText(lang, 'message_delete.NO_CONTENT'), inline: false }
+                            ],
+                            color: 'Orange'
+                        });
+
+                        await message.author.send(getTranslatedText(lang, 'spam_detection.CHARACTER_SPAM_USER_NOTIFICATION'))
+                            .catch(err => logger.warn(`[SpamDetection] Konnte DM an ${message.author.tag} nicht senden:`, err.message));
                         return;
+                    } catch (error) {
+                        logger.error(`[SpamDetection] Fehler beim Löschen der Nachricht oder Senden des Logs/DM (Zeichen-Spam):`, error);
                     }
+                }
+            }
+        }
 
-                    spamDeletedMessageIds.add(message.id);
+        // 3. Emote-Spam-Erkennung
+        if (spamConfig.maxEmotes > 0) {
+            const emoteRegex = /<a?:[a-zA-Z0-9_]+:\d+>|\p{Emoji_Presentation}/gu; // Custom und Unicode Emojis
+            const matches = message.content.match(emoteRegex);
+            if (matches && matches.length > spamConfig.maxEmotes) {
+                try {
                     await message.delete();
+                    logger.info(`[SpamDetection] Nachricht von ${message.author.tag} gelöscht (Emote-Spam).`);
 
-                    if (spamConfig.moderationLogChannelId) {
-                        const logChannel = await message.guild.channels.fetch(spamConfig.moderationLogChannelId).catch(() => null);
-                        if (logChannel && logChannel.isTextBased()) {
-                            const logEmbed = new EmbedBuilder()
-                                .setColor('Red')
-                                .setTitle(getTranslatedText(lang, 'spam_detection.CHARACTER_SPAM_DELETED_TITLE'))
-                                .setDescription(getTranslatedText(lang, 'spam_detection.CHARACTER_SPAM_DELETED_DESCRIPTION', {
-                                    userTag: message.author.tag,
-                                    channelMention: message.channel.toString()
-                                }))
-                                .addFields(
-                                    { name: getTranslatedText(lang, 'general.USER_ID'), value: message.author.id, inline: true },
-                                    { name: getTranslatedText(lang, 'general.CHANNEL_ID'), value: message.channel.id, inline: true },
-                                    { name: getTranslatedText(lang, 'spam_detection.ORIGINAL_CONTENT'), value: `\`\`\`\n${message.content.substring(0, 1000)}\n\`\`\``, inline: false }
-                                )
-                                .setTimestamp();
-                            await logChannel.send({ embeds: [logEmbed] });
-                        }
-                    }
-                    await message.channel.send({
-                        content: getTranslatedText(lang, 'spam_detection.CHARACTER_SPAM_USER_NOTIFICATION'),
-                        ephemeral: true
-                    }).catch(e => console.error(`[Spam Detection] Konnte Nutzer nicht über gelöschten Zeichen-Spam informieren:`, e));
+                    await logEvent(guildId, 'message_delete', {
+                        logTitle: getTranslatedText(lang, 'spam_detection.EMOTE_SPAM_DELETED_TITLE'),
+                        logDescription: getTranslatedText(lang, 'spam_detection.EMOTE_SPAM_DELETED_DESCRIPTION', {
+                            userTag: message.author.tag,
+                            channelMention: message.channel.toString()
+                        }),
+                        fields: [
+                            { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_AUTHOR'), value: `${message.author.tag} (${message.author.id})`, inline: true },
+                            { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_CHANNEL'), value: message.channel.name, inline: true },
+                            { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_CONTENT'), value: message.content || getTranslatedText(lang, 'message_delete.NO_CONTENT'), inline: false }
+                        ],
+                        color: 'Yellow'
+                    });
 
+                    await message.author.send(getTranslatedText(lang, 'spam_detection.EMOTE_SPAM_USER_NOTIFICATION'))
+                        .catch(err => logger.warn(`[SpamDetection] Konnte DM an ${message.author.tag} nicht senden:`, err.message));
                     return;
                 } catch (error) {
-                    console.error(`[Spam Detection] Fehler beim Löschen der Nachricht oder Senden des Logs (Zeichen-Spam):`, error);
-                    return;
+                    logger.error(`[SpamDetection] Fehler beim Löschen der Nachricht oder Senden des Logs/DM (Emote-Spam):`, error);
                 }
             }
+        }
 
-            // 3. Raid-Schutz überprüfen
-            if (spamConfig.raidProtectionEnabled && spamConfig.raidThreshold) {
-                const now = Date.now();
-                const raidThreshold = spamConfig.raidThreshold;
+        // 4. Sticker-Spam-Erkennung
+        if (spamConfig.maxStickers > 0 && message.stickers.size > spamConfig.maxStickers) {
+            try {
+                await message.delete();
+                logger.info(`[SpamDetection] Nachricht von ${message.author.tag} gelöscht (Sticker-Spam).`);
 
-                if (!recentMessages.has(guildId)) {
-                    recentMessages.set(guildId, []);
-                }
-                const guildRecentMessages = recentMessages.get(guildId);
-
-                guildRecentMessages.push({
-                    content: message.content.toLowerCase().trim(),
-                    timestamp: now,
-                    authorId: message.author.id,
-                    messageId: message.id
+                await logEvent(guildId, 'message_delete', {
+                    logTitle: getTranslatedText(lang, 'spam_detection.STICKER_SPAM_DELETED_TITLE'),
+                    logDescription: getTranslatedText(lang, 'spam_detection.STICKER_SPAM_DELETED_DESCRIPTION', {
+                        userTag: message.author.tag,
+                        channelMention: message.channel.toString()
+                    }),
+                    fields: [
+                        { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_AUTHOR'), value: `${message.author.tag} (${message.author.id})`, inline: true },
+                        { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_CHANNEL'), value: message.channel.name, inline: true },
+                        { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_CONTENT'), value: getTranslatedText(lang, 'message_delete.NO_CONTENT'), inline: false } // Sticker haben keinen Inhalt
+                    ],
+                    color: 'Purple'
                 });
 
-                const filteredMessages = guildRecentMessages.filter(msg => now - msg.timestamp < raidThreshold.timeframeMs);
-                recentMessages.set(guildId, filteredMessages);
-
-                const contentCounts = new Map();
-
-                for (const msg of filteredMessages) {
-                    if (!contentCounts.has(msg.content)) {
-                        contentCounts.set(msg.content, { count: 0, uniqueUsers: new Set() });
-                    }
-                    const entry = contentCounts.get(msg.content);
-                    entry.count++;
-                    entry.uniqueUsers.add(msg.authorId);
-                }
-
-                for (const [content, data] of contentCounts) {
-                    if (data.count >= raidThreshold.messageCount && data.uniqueUsers.size >= raidThreshold.userCount) {
-                        console.warn(`[Spam Detection] RAID DETECTED in guild ${message.guild.name} (${guildId})!`);
-                        console.warn(`  Content: "${content}"`);
-                        console.warn(`  Messages: ${data.count}, Unique Users: ${data.uniqueUsers.size}`);
-
-                        if (spamConfig.moderationLogChannelId) {
-                            const logChannel = await message.guild.channels.fetch(spamConfig.moderationLogChannelId).catch(() => null);
-                            if (logChannel && logChannel.isTextBased()) {
-                                const raidEmbed = new EmbedBuilder()
-                                    .setColor('Red')
-                                    .setTitle(getTranslatedText(lang, 'spam_detection.RAID_DETECTED_TITLE'))
-                                    .setDescription(getTranslatedText(lang, 'spam_detection.RAID_DETECTED_DESCRIPTION', {
-                                        messageCount: data.count,
-                                        userCount: data.uniqueUsers.size,
-                                        timePeriod: ms(raidThreshold.timeframeMs, { long: true })
-                                    }))
-                                    .addFields(
-                                        { name: getTranslatedText(lang, 'spam_detection.RAID_DETECTED_CONTENT'), value: `\`\`\`\n${content.substring(0, 1000)}\n\`\`\``, inline: false },
-                                        { name: getTranslatedText(lang, 'spam_detection.RAID_DETECTED_USERS'), value: Array.from(data.uniqueUsers).map(id => `<@${id}>`).join(', ').substring(0, 1024) || getTranslatedText(lang, 'general.NONE'), inline: false }
-                                    )
-                                    .setTimestamp();
-                                await logChannel.send({ embeds: [raidEmbed] });
-                            }
-                        }
-                        recentMessages.set(guildId, filteredMessages.filter(msg => msg.content !== content));
-                        break;
-                    }
-                }
-            }
-        }
-        // --- Ende der Spam-Erkennungslogik ---
-
-
-        // --- Start der XP- und Level-Logik ---
-        if (message.content.length < MIN_MESSAGE_LENGTH || message.content.trim().length === 0) return;
-        if (cooldowns.has(message.author.id)) return;
-
-        const levelsData = loadLevels();
-        const levelRolesData = loadLevelRoles();
-        const userId = message.author.id;
-
-        if (!levelsData[userId]) {
-            levelsData[userId] = { xp: 0, level: 0 };
-        }
-
-        const oldLevel = levelsData[userId].level;
-
-        let earnedXP = BASE_XP_PER_MESSAGE + (message.content.length * XP_PER_CHARACTER);
-        earnedXP = Math.round(earnedXP);
-
-        levelsData[userId].xp += earnedXP;
-
-        let currentLevel = levelsData[userId].level;
-        let requiredXP = getRequiredXP(currentLevel);
-
-        while (levelsData[userId].xp >= requiredXP) {
-            levelsData[userId].level++;
-            levelsData[userId].xp -= requiredXP;
-            currentLevel = levelsData[userId].level;
-            requiredXP = getRequiredXP(currentLevel);
-
-            const levelUpEmbed = new EmbedBuilder()
-                .setColor(0x00FF00)
-                .setTitle(getTranslatedText(lang, 'level_system.LEVEL_UP_TITLE'))
-                .setDescription(getTranslatedText(lang, 'level_system.LEVEL_UP_DESCRIPTION', { userId: userId, level: currentLevel }))
-                .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
-                .setTimestamp();
-
-            saveLevels(levelsData);
-
-            await message.channel.send({ embeds: [levelUpEmbed] });
-            console.log(`${message.author.tag} hat Level ${currentLevel} erreicht!`);
-        }
-
-        if (levelsData[userId].level > oldLevel) {
-            const member = message.member;
-            const rolesForGuild = levelRolesData[guildId];
-
-            if (rolesForGuild && rolesForGuild.length > 0) {
-                for (const lr of rolesForGuild) {
-                    if (levelsData[userId].level >= lr.level) {
-                        try {
-                            const role = message.guild.roles.cache.get(lr.roleId);
-                            if (role && !member.roles.cache.has(role.id)) {
-                                if (message.guild.members.me.roles.highest.position <= role.position) {
-                                    console.warn(`[LevelRoles] Bot kann Rolle ${role.name} (${role.id}) nicht zuweisen, da sie höher ist als seine höchste Rolle auf Server ${message.guild.name} (${guildId}).`);
-                                    continue;
-                                }
-                                await member.roles.add(role, getTranslatedText(lang, 'level_system.ROLE_ASSIGN_REASON', { level: lr.level }));
-                                console.log(`Rolle ${role.name} an ${member.user.tag} vergeben (Level ${levelsData[userId].level}).`);
-                            }
-                        } catch (error) {
-                            console.error(`[LevelRoles] Fehler beim Zuweisen der Rolle ${lr.roleId} an ${member.user.tag}:`, error);
-                        }
-                    }
-                }
+                await message.author.send(getTranslatedText(lang, 'spam_detection.STICKER_SPAM_USER_NOTIFICATION'))
+                    .catch(err => logger.warn(`[SpamDetection] Konnte DM an ${message.author.tag} nicht senden:`, err.message));
+                return;
+            } catch (error) {
+                logger.error(`[SpamDetection] Fehler beim Löschen der Nachricht oder Senden des Logs/DM (Sticker-Spam):`, error);
             }
         }
 
-        saveLevels(levelsData);
+        // 5. Raid-Erkennung
+        if (spamConfig.raidProtection.enabled) {
+            const now = Date.now();
+            const timePeriodMs = parseDurationToMs(spamConfig.raidProtection.timePeriod);
 
-        cooldowns.add(userId);
-        setTimeout(() => {
-            cooldowns.delete(userId);
-        }, COOLDOWN_SECONDS * 1000);
+            if (!raidDetection.has(guildId)) {
+                raidDetection.set(guildId, { users: new Map() });
+            }
+            const guildRaidData = raidDetection.get(guildId);
+
+            if (!guildRaidData.users.has(message.author.id)) {
+                guildRaidData.users.set(message.author.id, { messages: [] });
+            }
+            const userData = guildRaidData.users.get(message.author.id);
+
+            // Füge die aktuelle Nachricht hinzu und entferne alte Nachrichten
+            userData.messages.push({ content: message.content, timestamp: now });
+            userData.messages = userData.messages.filter(msg => now - msg.timestamp < timePeriodMs);
+
+            // Überprüfe auf ähnliche Nachrichten von verschiedenen Benutzern
+            const recentMessages = [];
+            guildRaidData.users.forEach(user => {
+                recentMessages.push(...user.messages);
+            });
+
+            // Gruppiere ähnliche Nachrichten
+            const messageGroups = new Map(); // content -> { count: number, users: Set<userId> }
+            recentMessages.forEach(msg => {
+                const normalizedContent = msg.content.toLowerCase().replace(/\s+/g, ' ').trim(); // Normalisiere Inhalt
+                if (!messageGroups.has(normalizedContent)) {
+                    messageGroups.set(normalizedContent, { count: 0, users: new Set() });
+                }
+                const group = messageGroups.get(normalizedContent);
+                group.count++;
+                group.users.add(message.author.id); // Füge den aktuellen Autor hinzu
+            });
+
+            for (const [content, group] of messageGroups.entries()) {
+                if (group.count >= spamConfig.raidProtection.messageCount &&
+                    group.users.size >= spamConfig.raidProtection.userCount) {
+                    logger.warn(`[SpamDetection] Potenzieller Raid in Gilde ${guildId} erkannt!`);
+
+                    // Logge den Raid
+                    await logEvent(guildId, 'spam_detection', {
+                        logTitle: getTranslatedText(lang, 'spam_detection.RAID_DETECTED_TITLE'),
+                        logDescription: getTranslatedText(lang, 'spam_detection.RAID_DETECTED_DESCRIPTION', {
+                            messageCount: group.count,
+                            userCount: group.users.size,
+                            timePeriod: spamConfig.raidProtection.timePeriod
+                        }),
+                        fields: [
+                            { name: getTranslatedText(lang, 'spam_detection.RAID_DETECTED_CONTENT'), value: content.substring(0, 1024), inline: false },
+                            { name: getTranslatedText(lang, 'spam_detection.RAID_DETECTED_USERS'), value: Array.from(group.users).map(id => `<@${id}>`).join(', ').substring(0, 1024), inline: false }
+                        ],
+                        color: 'Red'
+                    });
+
+                    // Optional: Weitere Aktionen wie Server-Lockdown, Rollenentzug etc.
+                    // (Hier nicht implementiert, da es komplexer ist und Benutzerentscheidungen erfordert)
+
+                    // Leere die Raid-Daten für diese Gilde, um wiederholte Logs für denselben Raid zu vermeiden
+                    raidDetection.delete(guildId);
+                    return; // Beende, da Raid erkannt wurde
+                }
+            }
+
+            // Bereinige alte Benutzerdaten, die keine aktuellen Nachrichten mehr haben
+            guildRaidData.users.forEach((user, userId) => {
+                if (user.messages.length === 0) {
+                    guildRaidData.users.delete(userId);
+                }
+            });
+        }
     },
 };
+
+/**
+ * Wandelt eine Dauerzeichenkette (z.B. "15s", "1m", "1h") in Millisekunden um.
+ * @param {string} durationString - Die Dauerzeichenkette.
+ * @returns {number} Die Dauer in Millisekunden.
+ */
+function parseDurationToMs(durationString) {
+    const match = durationString.match(/^(\d+)(s|m|h)$/);
+    if (!match) return 0;
+
+    const value = parseInt(match[1]);
+    const unit = match[2];
+
+    switch (unit) {
+        case 's': return value * 1000;
+        case 'm': return value * 60 * 1000;
+        case 'h': return value * 3600 * 1000;
+        default: return 0;
+    }
+}

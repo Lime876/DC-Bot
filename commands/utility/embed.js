@@ -345,6 +345,7 @@ module.exports = {
             .setDescription('The channel where the embed will be sent to (defaults to current channel for new embeds).')
             .addChannelTypes(ChannelType.GuildText)
             .setRequired(false)),
+    category: 'Utility', 
 
     async execute(interaction) {
         const lang = getGuildLanguage(interaction.guildId);

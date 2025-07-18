@@ -1,135 +1,103 @@
 // events/messageDelete.js
-const { Events, EmbedBuilder, AuditLogEvent, TextChannel, PermissionsBitField } = require('discord.js');
-const { getLogChannelId } = require('../utils/config.js');
-const { getGuildLanguage, getTranslatedText } = require('../utils/languageUtils');
-const { spamDeletedMessageIds } = require('../utils/sharedState'); // NEU: Importiere den Set aus utils/sharedState
+const { Events, AuditLogEvent } = require('discord.js');
+const { getTranslatedText, getGuildLanguage } = require('../utils/languageUtils');
+const { logEvent } = require('../utils/logUtils');
+const logger = require('../utils/logger'); // Importiere den neuen Logger
 
 module.exports = {
     name: Events.MessageDelete,
-    async execute(message) {
-        console.log(`[Message Delete DEBUG] Event ausgelöst für Nachricht ID: ${message.id} im Kanal ${message.channel.id}.`);
+    async execute(message, client) {
+        logger.debug(`[Message Delete DEBUG] Event ausgelöst für Nachricht ID: ${message.id} im Kanal ${message.channel.id}.`);
 
-        // Prüfe, ob diese Nachricht gerade vom Spam-Filter gelöscht wurde
-        if (spamDeletedMessageIds.has(message.id)) {
-            console.log(`[Message Delete DEBUG] Nachricht ID ${message.id}: Wurde vom Spam-Filter gelöscht. Überspringe Log in messageDelete.`);
-            spamDeletedMessageIds.delete(message.id);
+        // Ignoriere DM-Nachrichten
+        if (!message.guild) {
+            logger.debug(`[Message Delete DEBUG] Nachricht ID ${message.id}: Ignoriert (keine Gilde).`);
             return;
         }
 
+        const lang = await getGuildLanguage(message.guild.id);
+        let deleter = null; // Der Benutzer, der die Nachricht gelöscht hat
+        let reason = null; // Grund der Löschung
+
+        // Wenn die Nachricht partiell ist, versuche, sie vollständig abzurufen
         if (message.partial) {
             try {
-                message = await message.fetch();
-                console.log(`[Message Delete DEBUG] Nachricht ${message.id} erfolgreich vollständig abgerufen.`);
+                // Versuche, die vollständige Nachricht abzurufen
+                await message.fetch();
+                logger.debug(`[Message Delete DEBUG] Nachricht ID ${message.id}: Erfolgreich vollständig abgerufen.`);
             } catch (error) {
-                console.warn(`[Message Delete] Konnte Nachricht ${message.id} nicht vollständig abrufen (partial). Grund: ${error.message}`);
-            }
-        }
-
-        if (!message.guild || !message.channel.isTextBased()) {
-            console.log(`[Message Delete DEBUG] Nachricht ID ${message.id}: Ignoriert (keine Gilde oder kein Textkanal).`);
-            return;
-        }
-
-        if (message.author?.bot) {
-            console.log(`[Message Delete DEBUG] Nachricht ID ${message.id}: Ignoriert (Bot-Nachricht).`);
-            return;
-        }
-
-        const lang = getGuildLanguage(message.guild.id);
-        const logChannelId = getLogChannelId(message.guild.id, 'message_delete');
-
-        if (!logChannelId) {
-            console.log(`[Message Delete DEBUG] Nachricht ID ${message.id}: Kein Log-Kanal für 'message_delete' in Gilde ${message.guild.id} konfiguriert.`);
-            return;
-        }
-
-        let logChannel;
-        try {
-            logChannel = await message.guild.channels.fetch(logChannelId);
-            if (!logChannel || !(logChannel instanceof TextChannel)) {
-                console.warn(`[Message Delete] Konfigurierter Log-Kanal ${logChannelId} in Gilde ${message.guild.id} ist kein Textkanal oder nicht mehr vorhanden.`);
+                logger.error(`[Message Delete] Konnte Nachricht ${message.id} nicht vollständig abrufen (partial). Grund: ${error.message}`);
+                // Wenn das Abrufen fehlschlägt, können wir nicht alle Details erhalten.
+                // Wir loggen nur die verfügbaren Informationen und beenden die Funktion.
+                await logEvent(message.guild.id, 'message_delete', {
+                    logTitle: getTranslatedText(lang, 'message_delete.LOG_TITLE'),
+                    logDescription: getTranslatedText(lang, 'message_delete.LOG_DESCRIPTION_USER_DELETED', {
+                        authorTag: message.author ? message.author.tag : getTranslatedText(lang, 'general.UNKNOWN_USER'),
+                        authorId: message.author ? message.author.id : getTranslatedText(lang, 'general.UNKNOWN_ID'),
+                        channelMention: message.channel.toString()
+                    }),
+                    fields: [
+                        { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_AUTHOR'), value: message.author ? `${message.author.tag} (${message.author.id})` : getTranslatedText(lang, 'general.UNKNOWN'), inline: true },
+                        { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_CHANNEL'), value: message.channel.name, inline: true },
+                        { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_CONTENT'), value: getTranslatedText(lang, 'message_delete.NO_CONTENT'), inline: false } // Inhalt ist bei partiellen Nachrichten oft nicht verfügbar
+                    ]
+                });
                 return;
             }
-        } catch (error) {
-            console.error(`[Message Delete] Fehler beim Abrufen des Log-Kanals ${logChannelId}:`, error);
-            return;
         }
 
-        let embed;
-        let deleter = null;
-        let author = message.author;
-
+        // Versuche, den Löschenden über den Audit Log zu finden
         try {
             const auditLogs = await message.guild.fetchAuditLogs({
                 type: AuditLogEvent.MessageDelete,
-                limit: 10,
+                limit: 1,
             });
-
-            const relevantLog = auditLogs.entries.find(
-                auditLog =>
-                    auditLog.extra.channel.id === message.channel.id &&
-                    (auditLog.target.id === (author ? author.id : auditLog.target.id)) &&
-                    (Date.now() - auditLog.createdTimestamp < 5000)
+            const entry = auditLogs.entries.find(
+                (e) =>
+                e.target.id === message.author.id &&
+                e.extra.channel.id === message.channel.id &&
+                Date.now() - e.createdTimestamp < 5000 // Innerhalb der letzten 5 Sekunden
             );
 
-            if (relevantLog) {
-                deleter = relevantLog.executor;
-                if (!author && relevantLog.target) {
-                    author = relevantLog.target;
-                }
+            if (entry) {
+                deleter = entry.executor;
+                reason = entry.reason;
             }
         } catch (error) {
-            console.error(`[Message Delete] Fehler beim Abrufen des Audit Logs:`, error);
+            logger.error(`[Message Delete] Fehler beim Abrufen des Audit Logs:`, error);
         }
 
-        const channelMention = message.channel instanceof TextChannel ? message.channel.toString() : `#${message.channel.name}`;
-        const messageContent = (message.content && message.content.length > 0)
-            ? message.content.substring(0, 1024)
-            : getTranslatedText(lang, 'message_delete.NO_CONTENT');
+        // Bestimme den Typ der Löschung und logge entsprechend
+        let logDescriptionKey = 'message_delete.LOG_DESCRIPTION_USER_DELETED';
+        const fields = [
+            { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_AUTHOR'), value: `${message.author.tag} (${message.author.id})`, inline: true },
+            { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_CHANNEL'), value: message.channel.name, inline: true },
+            { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_CONTENT'), value: message.content || getTranslatedText(lang, 'message_delete.NO_CONTENT'), inline: false }
+        ];
 
-        const authorName = author ? (author.tag || author.username) : getTranslatedText(lang, 'general.UNKNOWN_USER');
-        const authorId = author ? author.id : getTranslatedText(lang, 'general.UNKNOWN');
-        const deleterName = deleter ? (deleter.tag || deleter.username) : getTranslatedText(lang, 'general.UNKNOWN_USER');
-        const deleterId = deleter ? deleter.id : getTranslatedText(lang, 'general.UNKNOWN');
-
-        if (deleter && deleter.id !== authorId) {
-            embed = new EmbedBuilder()
-                .setTitle(getTranslatedText(lang, 'message_delete.LOG_TITLE'))
-                .setDescription(getTranslatedText(lang, 'message_delete.LOG_DESCRIPTION_MOD_DELETED', {
-                    authorName: authorName,
-                    channelMention: channelMention,
-                    deleterName: deleterName
-                }))
-                .setColor(0xFF0000)
-                .addFields(
-                    { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_AUTHOR'), value: `${authorName} (${authorId})`, inline: true },
-                    { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_CHANNEL'), value: channelMention, inline: true },
-                    { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_DELETER'), value: `${deleterName} (${deleterId})`, inline: true },
-                    { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_CONTENT'), value: messageContent }
-                )
-                .setTimestamp();
-        } else {
-            embed = new EmbedBuilder()
-                .setTitle(getTranslatedText(lang, 'message_delete.LOG_TITLE'))
-                .setDescription(getTranslatedText(lang, 'message_delete.LOG_DESCRIPTION_USER_DELETED', {
-                    authorName: authorName,
-                    channelMention: channelMention
-                }))
-                .setColor(0xFFA500)
-                .addFields(
-                    { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_AUTHOR'), value: `${authorName} (${authorId})`, inline: true },
-                    { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_CHANNEL'), value: channelMention, inline: true },
-                    { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_CONTENT'), value: messageContent }
-                )
-                .setTimestamp();
+        if (deleter && deleter.id !== client.user.id && deleter.id !== message.author.id) {
+            logDescriptionKey = 'message_delete.LOG_DESCRIPTION_MOD_DELETED';
+            fields.push({ name: getTranslatedText(lang, 'message_delete.LOG_FIELD_DELETER'), value: `${deleter.tag} (${deleter.id})`, inline: true });
+            if (reason) {
+                fields.push({ name: getTranslatedText(lang, 'general.REASON'), value: reason, inline: false });
+            }
+        } else if (deleter && deleter.id === client.user.id) {
+            logDescriptionKey = 'message_delete.LOG_DESCRIPTION_BOT_DELETED';
+            if (reason) {
+                fields.push({ name: getTranslatedText(lang, 'general.REASON'), value: reason, inline: false });
+            }
         }
 
-        console.log(`[Message Delete DEBUG] Versuche Embed an Log-Kanal ${logChannel.id} zu senden.`);
-
-        try {
-            await logChannel.send({ embeds: [embed] });
-        } catch (error) {
-            console.error(`[Message Delete] Fehler beim Senden des Embeds an den Log-Kanal:`, error);
-        }
+        await logEvent(message.guild.id, 'message_delete', {
+            logTitle: getTranslatedText(lang, 'message_delete.LOG_TITLE'),
+            logDescription: getTranslatedText(lang, logDescriptionKey, {
+                authorTag: message.author.tag,
+                authorId: message.author.id,
+                channelMention: message.channel.toString(),
+                deleterTag: deleter ? deleter.tag : getTranslatedText(lang, 'general.UNKNOWN'),
+                deleterId: deleter ? deleter.id : getTranslatedText(lang, 'general.UNKNOWN_ID')
+            }),
+            fields: fields
+        });
     },
 };

@@ -42,6 +42,6 @@ module.exports = {
             .setTimestamp()
             .setFooter({ text: 'Wirtschaftssystem' });
 
-        await interaction.reply({ embeds: [inventoryEmbed] });
+        await interaction.reply({ embeds: [inventoryEmbed], ephemeral: true });
     },
 };

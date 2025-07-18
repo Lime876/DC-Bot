@@ -127,7 +127,7 @@ module.exports = {
                 }
             }
 
-            await interaction.reply({ embeds: [listEmbed] });
+            await interaction.reply({ embeds: [listEmbed], ephemeral: true });
         }
     },
 };

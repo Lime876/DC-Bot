@@ -91,6 +91,6 @@ module.exports = {
         }
 
         saveEconomy(economyData);
-        await interaction.reply({ embeds: [robEmbed] });
+        await interaction.reply({ embeds: [robEmbed], ephemeral: true });
     },
 };

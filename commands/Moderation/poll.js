@@ -86,7 +86,7 @@ module.exports = {
             .setTimestamp()
             .setFooter({ text: `Erstellt von ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() });
 
-        const replyMessage = await interaction.reply({ embeds: [pollEmbed], fetchReply: true });
+        const replyMessage = await interaction.reply({ embeds: [pollEmbed], fetchReply: true, ephemeral: true });
 
         // Füge Reaktionen hinzu
         for (const emoji of reactions) {

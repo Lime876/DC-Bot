@@ -5,7 +5,7 @@ module.exports = {
     .setName('serverinfo')
     .setDescription('Zeigt Informationen über den Server an'),
 
-    category: 'Utility', // <-- NEU: Füge diese Zeile hinzu
+    category: 'Utility', // <-- NEU: Füge diese Zeile hinzu
 
   async execute(interaction) {
     const { guild } = interaction;
@@ -31,6 +31,6 @@ module.exports = {
       .setFooter({ text: `Server-ID: ${guild.id}` })
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   }
 };

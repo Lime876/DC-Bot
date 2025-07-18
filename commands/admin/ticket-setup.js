@@ -1,22 +1,27 @@
-// commands\admin\ticket-setup.js
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } = require('discord.js');
+// commands/admin/ticket-setup.js
+const {
+    SlashCommandBuilder,
+    PermissionFlagsBits,
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ChannelType,
+} = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const { getGuildLanguage, getTranslatedText } = require('../../utils/languageUtils');
-const log = require('../../utils/logUtils'); // Make sure logUtils is correctly set up as discussed earlier
+const log = require('../../utils/logUtils');
 
-// Path to the configuration file
 const configPath = path.join(__dirname, '../../data/reactionSetupConfig.json');
 
-// --- Helper functions for loading and saving configuration ---
-// These functions should ideally be in a shared utility if used by multiple commands,
-// but defining them here is fine for this specific command's needs.
+// --- Helper: Konfig laden/speichern ---
 const loadConfig = () => {
     if (fs.existsSync(configPath)) {
         try {
             return JSON.parse(fs.readFileSync(configPath, 'utf8'));
         } catch (e) {
-            log.error(`[TicketSetup] Error parsing config file ${configPath}:`, e);
+            log.error(`[TicketSetup] Fehler beim Parsen von ${configPath}:`, e);
             return {};
         }
     }
@@ -31,7 +36,7 @@ const saveConfig = (config) => {
         }
         fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     } catch (e) {
-        log.error(`[TicketSetup] Error writing to config file ${configPath}:`, e);
+        log.error(`[TicketSetup] Fehler beim Schreiben in ${configPath}:`, e);
     }
 };
 
@@ -42,80 +47,87 @@ module.exports = {
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addChannelOption(option =>
             option.setName('category')
-                .setDescription('Die Kategorie, in der Tickets erstellt werden sollen.')
+                .setDescription('Kategorie, in der Tickets erstellt werden.')
                 .addChannelTypes(ChannelType.GuildCategory)
                 .setRequired(true))
         .addRoleOption(option =>
             option.setName('support_role')
-                .setDescription('Die Rolle, die Support-Mitarbeiter haben sollen.')
+                .setDescription('Support-Rolle für Tickets.')
                 .setRequired(true))
         .addChannelOption(option =>
-            option.setName('ticket_log_channel') // Option for the log channel
-                .setDescription('Der Kanal, in dem Ticket-Logs (Transkripte) gesendet werden sollen.')
+            option.setName('ticket_log_channel')
+                .setDescription('Kanal für Ticket-Logs (Transkripte).')
                 .addChannelTypes(ChannelType.GuildText)
                 .setRequired(true))
         .addStringOption(option =>
-            option.setName('welcome_title')
-                .setDescription('Optional: Benutzerdefinierter Titel für die Willkommensnachricht des Tickets.')
-                .setRequired(false))
+            option.setName('panel_embed_title')
+                .setDescription('Optional: Titel für das Panel-Embed.'))
         .addStringOption(option =>
-            option.setName('welcome_description')
-                .setDescription('Optional: Benutzerdefinierte Beschreibung für die Willkommensnachricht des Tickets.')
-                .setRequired(false)),
+            option.setName('panel_embed_description')
+                .setDescription('Optional: Beschreibung für das Panel-Embed.'))
+        .addStringOption(option =>
+            option.setName('ticket_embed_title')
+                .setDescription('Optional: Titel für das Ticket-Embed.'))
+        .addStringOption(option =>
+            option.setName('ticket_embed_description')
+                .setDescription('Optional: Beschreibung für das Ticket-Embed.')),
+
     async execute(interaction) {
         const lang = getGuildLanguage(interaction.guildId);
 
         const category = interaction.options.getChannel('category');
         const supportRole = interaction.options.getRole('support_role');
-        const ticketLogChannel = interaction.options.getChannel('ticket_log_channel'); // Renamed to avoid confusion with log function
-        const welcomeTitle = interaction.options.getString('welcome_title');
-        const welcomeDescription = interaction.options.getString('welcome_description');
+        const ticketLogChannel = interaction.options.getChannel('ticket_log_channel');
+        const panelEmbedTitle = interaction.options.getString('panel_embed_title');
+        const panelEmbedDescription = interaction.options.getString('panel_embed_description');
+        const ticketEmbedTitle = interaction.options.getString('ticket_embed_title');
+        const ticketEmbedDescription = interaction.options.getString('ticket_embed_description');
 
-        // Korrigiert: Nutzt den vollen Pfad zum Übersetzungsschlüssel
         if (category.type !== ChannelType.GuildCategory) {
-            return interaction.reply({ content: getTranslatedText(lang, 'jtc_command.invalid_category_type'), ephemeral: true }); // Ich habe hier 'jtc_command.invalid_category_type' angenommen, da du keinen spezifischen Schlüssel für diesen Fall in ticket_setup_command hattest. Wenn du einen besseren hast, ersetze ihn.
+            return interaction.reply({
+                content: getTranslatedText(lang, 'ticket_setup_command.INVALID_CATEGORY'),
+                ephemeral: true,
+            });
         }
 
-        // Korrigiert: Nutzt den vollen Pfad zum Übersetzungsschlüssel
         if (!supportRole || !category || !ticketLogChannel) {
-            return interaction.reply({ content: getTranslatedText(lang, 'ticket_setup_command.TICKET_SETUP_MISSING_OPTIONS'), ephemeral: true });
+            return interaction.reply({
+                content: getTranslatedText(lang, 'ticket_setup_command.TICKET_SETUP_MISSING_OPTIONS'),
+                ephemeral: true,
+            });
         }
 
-        let currentConfig = loadConfig();
-        if (!currentConfig[interaction.guild.id]) {
-            currentConfig[interaction.guild.id] = {};
-        }
+        const config = loadConfig();
+        if (!config[interaction.guild.id]) config[interaction.guild.id] = {};
 
-        currentConfig[interaction.guild.id].ticketCategoryId = category.id;
-        currentConfig[interaction.guild.id].supportRoleId = supportRole.id;
-        currentConfig[interaction.guild.id].transcriptChannelId = ticketLogChannel.id; // Store the log channel ID in config
+        config[interaction.guild.id] = {
+            ticketCategoryId: category.id,
+            supportRoleId: supportRole.id,
+            transcriptChannelId: ticketLogChannel.id,
+            panelEmbedTitle: panelEmbedTitle || null,
+            panelEmbedDescription: panelEmbedDescription || null,
+            ticketEmbedTitle: ticketEmbedTitle || null,
+            ticketEmbedDescription: ticketEmbedDescription || null,
+        };
 
-        if (welcomeTitle) currentConfig[interaction.guild.id].ticketWelcomeTitle = welcomeTitle;
-        if (welcomeDescription) currentConfig[interaction.guild.id].ticketWelcomeDescription = welcomeDescription;
+        saveConfig(config);
 
-        saveConfig(currentConfig); // Save the updated configuration
+            console.log(`[TicketSetup] Ticket-System gesetzt für ${interaction.guild.name} (${interaction.guild.id})`);
 
-        // ... Rest of your code for sending the confirmation message and button ...
 
         const embed = new EmbedBuilder()
             .setColor(0x00FF00)
-            // Korrigiert: Nutzt den vollen Pfad zum Übersetzungsschlüssel
-            .setTitle(getTranslatedText(lang, 'ticket_setup_command.TICKET_SETUP_EMBED_TITLE'))
-            // Korrigiert: Nutzt den vollen Pfad zum Übersetzungsschlüssel
-            .setDescription(getTranslatedText(lang, 'ticket_setup_command.TICKET_SETUP_EMBED_DESCRIPTION', { category: category.name, supportRole: supportRole.name, logChannel: ticketLogChannel.name })) // Use ticketLogChannel.name here
+            .setTitle(panelEmbedTitle || getTranslatedText(lang, 'ticket_setup_command.TICKET_PANEL_TITLE'))
+            .setDescription(panelEmbedDescription || getTranslatedText(lang, 'ticket_setup_command.TICKET_PANEL_DESCRIPTION'))
             .addFields(
-                // Korrigiert: Nutzt den vollen Pfad zum Übersetzungsschlüssel
-                { name: getTranslatedText(lang, 'ticket_system.TICKET_CATEGORY_FIELD'), value: `<#${category.id}>`, inline: true }, // Annahme: Du willst 'ticket_system' hier nutzen. Wenn nicht, ändere es zu 'ticket_setup_command.TICKET_CATEGORY_FIELD'
-                // Korrigiert: Nutzt den vollen Pfad zum Übersetzungsschlüssel
-                { name: getTranslatedText(lang, 'ticket_system.TICKET_SUPPORT_ROLE_FIELD'), value: `<@&${supportRole.id}>`, inline: true }, // Annahme: Du willst 'ticket_system' hier nutzen. Wenn nicht, ändere es zu 'ticket_setup_command.TICKET_SUPPORT_ROLE_FIELD'
-                // Korrigiert: Nutzt den vollen Pfad zum Übersetzungsschlüssel
-                { name: getTranslatedText(lang, 'ticket_system.TICKET_LOG_CHANNEL_FIELD'), value: `<#${ticketLogChannel.id}>`, inline: true } // Annahme: Du willst 'ticket_system' hier nutzen. Wenn nicht, ändere es zu 'ticket_setup_command.TICKET_LOG_CHANNEL_FIELD'
+                { name: getTranslatedText(lang, 'ticket_setup_command.TICKET_CATEGORY_FIELD'), value: `<#${category.id}>`, inline: true },
+                { name: getTranslatedText(lang, 'ticket_setup_command.TICKET_SUPPORT_ROLE_FIELD'), value: `<@&${supportRole.id}>`, inline: true },
+                { name: getTranslatedText(lang, 'ticket_setup_command.TICKET_LOG_CHANNEL_FIELD'), value: `<#${ticketLogChannel.id}>`, inline: true }
             )
             .setTimestamp();
 
         const ticketButton = new ButtonBuilder()
             .setCustomId('open_ticket')
-            // Korrigiert: Nutzt den vollen Pfad zum Übersetzungsschlüssel
             .setLabel(getTranslatedText(lang, 'buttons.BUTTON_OPEN_TICKET'))
             .setStyle(ButtonStyle.Success)
             .setEmoji('📧');

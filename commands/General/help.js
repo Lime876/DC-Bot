@@ -1,53 +1,98 @@
 // commands/General/help.js
-const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder, MessageFlags, ComponentType } = require('discord.js');
+const {
+    SlashCommandBuilder,
+    ActionRowBuilder,
+    StringSelectMenuBuilder,
+    EmbedBuilder,
+    MessageFlags,
+    ComponentType,
+} = require('discord.js');
 const { getGuildLanguage, getTranslatedText } = require('../../utils/languageUtils');
+const logger = require('../../utils/logger'); // Stelle sicher, dass der Logger korrekt importiert und konfiguriert ist
 
-// Temporäre In-Memory-Flutkontrolle für Hilfesitzungen
-const activeHelpSessions = new Map(); // Map: messageId -> { userId, currentPageIndex }
+const activeHelpSessions = new Map();
 
-// Definierte Hilfeseiten mit Schlüsseln für Übersetzungen
-// Die Titel und Beschreibungen werden aus den Language-Dateien über getTranslatedText geholt.
-const helpPages = [
-    { pageKey: "PAGE_0", titleKey: "PAGE_0_TITLE" }, // Allgemeine Befehle
-    { pageKey: "PAGE_1", titleKey: "PAGE_1_TITLE" }, // Admin-Befehle
-    { pageKey: "PAGE_2", titleKey: "PAGE_2_TITLE" }, // Moderations-Befehle
-    { pageKey: "PAGE_3", titleKey: "PAGE_3_TITLE" }, // Ticket-System
-    { pageKey: "PAGE_4", titleKey: "PAGE_4_TITLE" }  // JTC (Join to Create)
-    // Füge hier weitere Seiten/Kategorien hinzu, mit entsprechenden pageKeys und titleKeys für die Übersetzungen
-];
-
-/**
- * Erstellt den Embed für die Hilfeseite.
- * @param {number} pageIndex Der Index der anzuzeigenden Seite.
- * @param {string} lang Die Sprache für die Übersetzungen.
- * @returns {EmbedBuilder} Der fertige Embed.
- */
-const getHelpEmbed = (pageIndex, lang) => {
-    const pageData = helpPages[pageIndex];
-    // Die tatsächlichen Titel und Beschreibungen werden hier aus den Sprachdateien geholt.
-    const pageTitle = getTranslatedText(lang, `help_command.${pageData.titleKey}`);
-    const pageDescription = getTranslatedText(lang, `help_command.${pageData.pageKey}_DESCRIPTION`);
-
-    return new EmbedBuilder()
-        .setColor('Blue')
-        .setTitle(pageTitle)
-        .setDescription(pageDescription)
-        .setFooter({ text: getTranslatedText(lang, 'help_command.PAGE_FOOTER', { currentPage: pageIndex + 1, totalPages: helpPages.length }) });
+const getCommandCategories = (commands) => {
+    // Convert commands to array if it's a Collection
+    const cmds = Array.isArray(commands) ? commands : Array.from(commands.values());
+    const categories = new Set();
+    cmds.forEach(command => {
+        if (command.category) {
+            categories.add(command.category);
+        }
+    });
+    return Array.from(categories).sort();
 };
 
-/**
- * Erstellt die ActionRow mit dem Select-Menü für die Navigation.
- * @param {number} currentPageIndex Der aktuell ausgewählte Seitenindex.
- * @param {string} lang Die Sprache für die Übersetzungen.
- * @returns {ActionRowBuilder} Die ActionRow mit dem Select-Menü.
- */
-const getSelectMenuRow = (currentPageIndex, lang) => {
-    const options = helpPages.map((page, index) => ({
-        label: getTranslatedText(lang, `help_command.${page.titleKey}`), // Titel der Seite als Label
-        value: index.toString(), // Seitenindex als Wert
-        description: getTranslatedText(lang, `help_command.${page.pageKey}_SHORT_DESCRIPTION`) || '', // Kurze Beschreibung für die Option
-        default: index === currentPageIndex // Setzt die aktuell ausgewählte Seite als Standard
-    }));
+const filterVisibleCommands = (commands, member) => {
+    // Convert commands to array if it's a Collection
+    const cmds = Array.isArray(commands) ? commands : Array.from(commands.values());
+    return cmds.filter(cmd => {
+        if (!cmd.permissions) return true;
+        return member.permissions.has(cmd.permissions);
+    });
+};
+
+const getHelpEmbed = (selectedCategory, lang, commands, member) => {
+    // Convert commands to array if it's a Collection
+    const cmds = Array.isArray(commands) ? commands : Array.from(commands.values());
+    const embed = new EmbedBuilder()
+        .setColor('Blue')
+        .setTimestamp();
+
+    const visibleCommands = filterVisibleCommands(cmds, member);
+
+    if (selectedCategory === 'overview') {
+        embed.setTitle(getTranslatedText(lang, 'help_command.GENERAL_OVERVIEW_TITLE'))
+             .setDescription(getTranslatedText(lang, 'help_command.GENERAL_OVERVIEW_DESCRIPTION'));
+    } else {
+        embed.setTitle(getTranslatedText(lang, 'help_command.CATEGORY_TITLE', { category: selectedCategory }))
+             .setDescription(getTranslatedText(lang, 'help_command.CATEGORY_DESCRIPTION', { category: selectedCategory }));
+
+        const commandsInCategory = visibleCommands.filter(cmd => cmd.category === selectedCategory);
+
+        if (commandsInCategory.length > 0) {
+            let descriptionText = '';
+            commandsInCategory.forEach(cmd => {
+                const cmdDescription = getTranslatedText(lang, `${cmd.data.name}_command.DESCRIPTION`) || cmd.data.description || getTranslatedText(lang, 'help_command.NO_DESCRIPTION');
+                descriptionText += `**\`/${cmd.data.name}\`**\n${cmdDescription}\n\n`;
+            });
+            embed.setDescription(descriptionText);
+        } else {
+            embed.setDescription(getTranslatedText(lang, 'help_command.NO_COMMANDS_IN_CATEGORY'));
+        }
+    }
+
+    embed.setFooter({
+        text: getTranslatedText(lang, 'help_command.FOOTER_SELECT_HINT')
+    });
+
+    return embed;
+};
+
+const getSelectMenuRow = (selectedCategory, lang, commands, member) => {
+    // Convert commands to array if it's a Collection
+    const cmds = Array.isArray(commands) ? commands : Array.from(commands.values());
+    const visibleCommands = filterVisibleCommands(cmds, member);
+    const categories = getCommandCategories(visibleCommands);
+    const options = [
+        {
+            label: getTranslatedText(lang, 'help_command.GENERAL_OVERVIEW_TITLE'),
+            description: getTranslatedText(lang, 'help_command.GENERAL_OVERVIEW_SHORT_DESCRIPTION'),
+            value: 'overview',
+            default: selectedCategory === 'overview',
+        },
+        ...categories.map(cat => {
+            // HIER IST DER NEUE DEBUG-LOG!
+            logger.debug(`[Help Command] Verarbeite Kategorie für Auswahlmenü: ${cat}, in Kleinbuchstaben: ${cat.toLowerCase()}`);
+            return {
+                label: cat,
+                description: getTranslatedText(lang, `help_command.${cat.toLowerCase()}_category_description`) || getTranslatedText(lang, 'help_command.DEFAULT_CATEGORY_DESCRIPTION'),
+                value: cat,
+                default: cat === selectedCategory,
+            };
+        })
+    ];
 
     const selectMenu = new StringSelectMenuBuilder()
         .setCustomId('help_select_menu')
@@ -60,169 +105,94 @@ const getSelectMenuRow = (currentPageIndex, lang) => {
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('help')
-        .setDescription('Displays a list of commands.') // Fallback-Beschreibung
+        .setDescription('Displays a list of commands.')
         .setDescriptionLocalizations({
             de: getTranslatedText('de', 'help_command.DESCRIPTION'),
-            'en-US': getTranslatedText('en', 'help_command.DESCRIPTION'),
+            'en-US': getTranslatedText('en', 'help_command.DESCRIPTION')
         }),
+
+    category: 'General',
 
     async execute(interaction, client) {
         const userId = interaction.user.id;
         const guildId = interaction.guild.id;
-        const lang = getGuildLanguage(guildId);
+        const lang = await getGuildLanguage(guildId);
+        const member = interaction.member;
+        let selectedCategory = 'overview';
 
-        let currentPageIndex = 0; // Start mit der ersten Seite
-
-        const initialEmbed = getHelpEmbed(currentPageIndex, lang);
-        const initialRow = getSelectMenuRow(currentPageIndex, lang);
-
-        const message = await interaction.reply({
-            embeds: [initialEmbed],
-            components: [initialRow],
-            fetchReply: true, // Wichtig, um die Nachricht für den Collector zu erhalten
-        });
-
-        // Speichere den Zustand für diese spezifische Hilfesitzung
-        activeHelpSessions.set(message.id, {
-            userId: userId,
-            currentPageIndex: currentPageIndex,
-        });
-
-        const collector = interaction.channel.createMessageComponentCollector({
-            filter: i => i.user.id === interaction.user.id && i.message.id === message.id && i.customId === 'help_select_menu',
-            componentType: ComponentType.StringSelect, // Filtert auf StringSelect-Menü
-            time: 300000, // Collector 5 Minuten aktiv
-        });
-
-        collector.on('collect', async i => {
-            // Die Interaktion hier ist die Auswahl im Select-Menü, die vom Collector gesammelt wurde.
-            // Die handleInteraction Logik ist bereits so aufgebaut, dass sie prüft, ob die Sitzung noch aktiv ist.
-            await module.exports.handleInteraction(i, client);
-        });
-
-        collector.on('end', async (collected, reason) => {
-            if (reason === 'time') {
-                try {
-                    const session = activeHelpSessions.get(message.id);
-                    if (session) {
-                        const disabledRow = getSelectMenuRow(session.currentPageIndex, lang);
-                        disabledRow.components.forEach(comp => {
-                            if (comp instanceof StringSelectMenuBuilder) {
-                                comp.setDisabled(true); // Deaktiviere das Select-Menü
-                            }
-                        });
-                        // Sicherstellen, dass die Nachricht noch existiert, bevor sie bearbeitet wird
-                        if (message && !message.deleted) {
-                            await message.edit({ components: [disabledRow] });
-                        }
-                        activeHelpSessions.delete(message.id); // Bereinige den Zustand
-                    }
-                } catch (error) {
-                    // Ignoriere 10008 (Unknown Message) Fehler, wenn Nachricht gelöscht wurde
-                    if (error.code !== 10008) {
-                        console.error('Fehler beim Deaktivieren der Hilfe-Select-Menü nach Zeitüberschreitung:', error);
-                    }
-                }
-            }
-        });
-    },
-
-    async handleInteraction(interaction, client) {
-        const messageId = interaction.message.id;
-        const userId = interaction.user.id;
-        const guildId = interaction.guild.id;
-        const lang = getGuildLanguage(guildId);
-
-        let session = activeHelpSessions.get(messageId);
-
-        // Defer die Interaktion sofort, um Timeout zu vermeiden
-        try {
-            if (!interaction.deferred && !interaction.replied) {
-                await interaction.deferUpdate();
-            }
-        } catch (deferError) {
-            console.error(`[Help Command] Fehler beim Deferring der Select-Menü-Interaktion:`, deferError);
-            // Wenn wir hier einen Fehler haben, ist die Interaktion möglicherweise bereits abgelaufen.
-            // Wir versuchen trotzdem fortzufahren, aber mit Vorsicht.
-        }
-
-        // Überprüfe, ob eine gültige Sitzung existiert und ob der Benutzer der Richtige ist
-        if (!session || session.userId !== userId) {
-            console.warn(`[Help Command] Interaktion für abgelaufene oder fremde Help-Sitzung: Message ID ${messageId}, User ID ${userId}`);
-            try {
-                // Wenn bereits deferred, verwenden Sie editReply, sonst followUp
-                if (interaction.deferred || interaction.replied) {
-                    await interaction.editReply({
-                        content: getTranslatedText(lang, 'bot_messages.INTERACTION_EXPIRED_OR_NOT_YOURS'),
-                        flags: MessageFlags.Ephemeral
-                    });
-                } else {
-                    await interaction.followUp({ // Dies sollte nicht passieren, wenn deferUpdate() erfolgreich war
-                        content: getTranslatedText(lang, 'bot_messages.INTERACTION_EXPIRED_OR_NOT_YOURS'),
-                        flags: MessageFlags.Ephemeral
-                    });
-                }
-            } catch (error) {
-                // Fehler 10062 bedeutet "Unknown Interaction" (bereits abgelaufen/bestätigt)
-                if (error.code === 10062) {
-                    console.error(`[Help Command] Konnte auf abgelaufene Select-Menü-Interaktion nicht antworten (handleInteraction).`);
-                } else {
-                    console.error(`[Help Command] Fehler in handleInteraction bei abgelaufener/fremder Sitzung (Folgenachricht):`, error);
-                }
-            }
-            return;
-        }
+        const initialEmbed = getHelpEmbed(selectedCategory, lang, client.commands, member);
+        const initialRow = getSelectMenuRow(selectedCategory, lang, client.commands, member);
 
         try {
-            // Paginierungslogik für Select-Menü
-            if (interaction.customId === 'help_select_menu') {
-                session.currentPageIndex = parseInt(interaction.values[0]); // Der ausgewählte Wert ist der Seitenindex
-            }
+            const message = await interaction.reply({
+                embeds: [initialEmbed],
+                components: [initialRow],
+                fetchReply: true,
+                ephemeral: true 
+            });
 
-            // Hole das aktualisierte Embed und die Buttons
-            const updatedEmbed = getHelpEmbed(session.currentPageIndex, lang);
-            const updatedRow = getSelectMenuRow(session.currentPageIndex, lang);
+            activeHelpSessions.set(message.id, {
+                userId,
+                selectedCategory
+            });
 
-            // Aktualisiere die ursprüngliche Nachricht
-            await interaction.editReply({ embeds: [updatedEmbed], components: [updatedRow] });
+            const collector = interaction.channel.createMessageComponentCollector({
+                filter: i => i.user.id === userId && i.message.id === message.id && i.customId === 'help_select_menu',
+                componentType: ComponentType.StringSelect,
+                time: 300000
+            });
 
-            // Zustand in der Map aktualisieren
-            activeHelpSessions.set(messageId, session);
+            collector.on('collect', async i => {
+                const currentSession = activeHelpSessions.get(i.message.id);
 
-        } catch (error) {
-            // Behandelt den Fall, dass die ursprüngliche Nachricht nicht mehr existiert
-            if (error.code === 10008) { // Unknown Message
-                console.warn(`[Help Command] Ursprüngliche Hilfe-Nachricht wurde gelöscht, kann nicht bearbeitet werden. ID: ${messageId}`);
-                activeHelpSessions.delete(messageId); // Sitzung bereinigen
-                return;
-            }
-            // Fehler 10062 bedeutet "Unknown Interaction" (bereits abgelaufen/bestätigt)
-            if (error.code === 10062) {
-                console.error(`[Help Command] Interaktion abgelaufen (handleInteraction), konnte Select-Menü-Klick nicht verarbeiten. User: ${interaction.user.tag}`);
                 try {
-                    // Sende eine neue, ephemere Nachricht, da die ursprüngliche Interaktion abgelaufen ist
-                    await interaction.channel.send({
-                        content: getTranslatedText(lang, 'bot_messages.INTERACTION_EXPIRED_RESTART_COMMAND'),
-                        flags: MessageFlags.Ephemeral, // Macht die Nachricht nur für den Benutzer sichtbar
-                    }).catch(sendError => {
-                        console.error(`Konnte abgelaufene Interaktionsnachricht nicht senden (handleInteraction):`, sendError);
-                    });
-                } catch (sendErrorFallback) {
-                    console.error(`Konnte abgelaufene Interaktionsnachricht nicht senden (handleInteraction Fallback):`, sendErrorFallback);
+                    if (!i.deferred && !i.replied) {
+                        await i.deferUpdate();
+                    }
+                } catch (err) {
+                    if (err.code !== 10062) logger.error("Fehler bei deferUpdate:", err);
+                    return;
                 }
+
+                if (!currentSession || currentSession.userId !== i.user.id) return;
+
+                try {
+                    currentSession.selectedCategory = i.values[0];
+                    const updatedEmbed = getHelpEmbed(currentSession.selectedCategory, lang, client.commands, member);
+                    const updatedRow = getSelectMenuRow(currentSession.selectedCategory, lang, client.commands, member);
+
+                    await i.editReply({
+                        embeds: [updatedEmbed],
+                        components: [updatedRow]
+                    });
+                } catch (err) {
+                    logger.error("Fehler beim Bearbeiten der Hilfeantwort:", err);
+                }
+            });
+
+            collector.on('end', async (_, reason) => {
+                if (reason !== 'time') return;
+                const session = activeHelpSessions.get(message.id);
+                if (!session) return;
+
+                const disabledRow = getSelectMenuRow(session.selectedCategory, lang, client.commands, member);
+                disabledRow.components.forEach(comp => comp.setDisabled(true));
+
+                try {
+                    await message.edit({ components: [disabledRow] });
+                } catch (err) {
+                    if (err.code !== 10008) logger.error("Fehler beim Entfernen der Komponenten:", err);
+                }
+
+                activeHelpSessions.delete(message.id);
+            });
+        } catch (err) {
+            logger.error("Fehler bei /help:", err);
+            const msg = { content: getTranslatedText(lang, 'bot_messages.ERROR_OCCURRED'), ephemeral: true };
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp(msg).catch(() => {});
             } else {
-                console.error(`[Help Command] Unerwarteter Fehler in handleInteraction:`, error);
-                try {
-                    // Wenn wir hier sind, ist deferUpdate() wahrscheinlich fehlgeschlagen oder die Interaktion war bereits abgelaufen.
-                    // Versuchen Sie, eine Follow-up-Nachricht zu senden, wenn nicht bereits geantwortet/deferred
-                    if (!interaction.deferred && !interaction.replied) {
-                         await interaction.followUp({ content: getTranslatedText(lang, 'bot_messages.ERROR_OCCURRED'), flags: MessageFlags.Ephemeral });
-                    } else {
-                         await interaction.editReply({ content: getTranslatedText(lang, 'bot_messages.ERROR_OCCURRED'), flags: MessageFlags.Ephemeral });
-                    }
-                } catch (followupError) {
-                    console.error(`Konnte Fehlermeldung nach handleInteraction-Fehler nicht senden:`, followupError);
-                }
+                await interaction.reply(msg).catch(() => {});
             }
         }
     },

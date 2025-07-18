@@ -1,32 +1,27 @@
-// deploy-commands.js
-require('dotenv').config(); // Lade Umgebungsvariablen aus der .env Datei
+require('dotenv').config();
 
 const { REST, Routes } = require('discord.js');
 const fs = require('node:fs');
 const path = require('node:path');
 
-// Hole die Werte aus den Umgebungsvariablen (deiner .env Datei)
 const clientId = process.env.DISCORD_CLIENT_ID;
 const token = process.env.DISCORD_BOT_TOKEN;
 
-// Stelle sicher, dass die Variablen auch vorhanden sind
 if (!clientId || !token) {
     console.error('FEHLER: DISCORD_CLIENT_ID oder DISCORD_BOT_TOKEN ist in der .env-Datei nicht definiert.');
-    process.exit(1); // Beende den Prozess, wenn wichtige Variablen fehlen
+    process.exit(1);
 }
 
 const commands = [];
-// Pfad zum 'commands' Ordner
 const commandsPath = path.join(__dirname, 'commands');
 
-// Rekursive Funktion zum Durchsuchen von Ordnern
 function readCommands(dir) {
     const files = fs.readdirSync(dir, { withFileTypes: true });
 
     for (const file of files) {
         const fullPath = path.join(dir, file.name);
         if (file.isDirectory()) {
-            readCommands(fullPath); // Wenn es ein Ordner ist, rekursiv durchsuchen
+            readCommands(fullPath);
         } else if (file.isFile() && file.name.endsWith('.js')) {
             const command = require(fullPath);
             if ('data' in command && 'execute' in command) {
@@ -38,26 +33,30 @@ function readCommands(dir) {
     }
 }
 
-// Starte das Lesen der Commands
 readCommands(commandsPath);
 
-
-// Construct and deploy your commands!
 const rest = new REST().setToken(token);
 
 (async () => {
-	try {
-		console.log(`Starte Aktualisierung von ${commands.length} Anwendungs-(/) Befehlen global.`);
+    try {
+        console.log(`Lösche alle globalen Slash-Commands...`);
+        // Alle globalen Commands löschen (leere Liste)
+        await rest.put(
+            Routes.applicationCommands(clientId),
+            { body: [] }
+        );
+        console.log(`Alle globalen Slash-Commands gelöscht.`);
 
-        // Globales Deployment der Commands (dauert bis zu 1 Stunde)
+        console.log(`Registriere ${commands.length} neue globale Slash-Commands...`);
+        // Neue Commands registrieren
         const data = await rest.put(
             Routes.applicationCommands(clientId),
-            { body: commands },
+            { body: commands }
         );
-        console.log(`Erfolgreich ${data.length} Globale Anwendungs-(/) Befehle neu geladen.`);
+        console.log(`Erfolgreich ${data.length} globale Slash-Commands neu geladen.`);
 
-	} catch (error) {
-		console.error(error);
+    } catch (error) {
+        console.error(error);
         if (error.status === 401) {
             console.error('Möglicher Fehler: Bot-Token ist ungültig oder Client ID falsch.');
         } else if (error.status === 403) {
@@ -65,5 +64,5 @@ const rest = new REST().setToken(token);
         } else if (error.status === 404) {
             console.error('Möglicher Fehler: Client ID ist ungültig.');
         }
-	}
+    }
 })();

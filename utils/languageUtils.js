@@ -1,54 +1,61 @@
-const fs = require('fs');
-const path = require('path');
+// utils/languageUtils.js
+const fs = require('node:fs'); // Verwende 'node:fs' für Klarheit
+const path = require('node:path'); // Verwende 'node:path' für Klarheit
+const logger = require('./logger'); // Importiere den Logger
 
 const languagesPath = path.resolve(__dirname, '..', 'locales');
+const guildLanguagesConfigPath = path.join(__dirname, '../data/guildLanguages.json');
 
-const guildLanguagesConfigPath = path.join(__dirname, '../data/guildLanguages.json'); // This path should be correct if guildLanguages.json is directly in 'data'
+const translations = {}; // Cache für geladene Sprachen
+let guildLanguages = {}; // Cache für Gilden-Sprachkonfigurationen
+const defaultLanguage = process.env.DEFAULT_LANGUAGE || 'en'; // Nutze Umgebungsvariable, sonst 'en'
 
-const translations = {};
-let guildLanguages = {};
-const defaultLanguage = 'en';
-
+/**
+ * Lädt alle Sprachdateien aus dem 'locales'-Verzeichnis.
+ */
 function loadTranslations() {
-    console.log(`[LanguageUtils DEBUG] Checking if languages directory exists: ${languagesPath}`);
+    logger.debug(`[LanguageUtils DEBUG] Checking if languages directory exists: ${languagesPath}`);
     if (!fs.existsSync(languagesPath)) {
-        console.error(`[LanguageUtils] Languages directory not found: ${languagesPath}`);
+        logger.error(`[LanguageUtils] Languages directory not found: ${languagesPath}`);
         return;
     }
-    console.log(`[LanguageUtils DEBUG] Languages directory found: ${languagesPath}`);
+    logger.debug(`[LanguageUtils DEBUG] Languages directory found: ${languagesPath}`);
 
     const filesInDir = fs.readdirSync(languagesPath);
-    console.log(`[LanguageUtils DEBUG] Files found in directory:`, filesInDir);
+    logger.debug(`[LanguageUtils DEBUG] Files found in directory:`, filesInDir);
 
     filesInDir.forEach(file => {
         if (file.endsWith('.json')) {
             const langCode = file.replace('.json', '');
             const filePath = path.join(languagesPath, file);
-            console.log(`[LanguageUtils DEBUG] Attempting to load file: ${filePath} for langCode: ${langCode}`);
+            logger.debug(`[LanguageUtils DEBUG] Attempting to load file: ${filePath} for langCode: ${langCode}`);
             try {
                 const fileContent = fs.readFileSync(filePath, 'utf8');
                 translations[langCode] = JSON.parse(fileContent);
-                console.log(`[LanguageUtils] Loaded translations for ${langCode}. Keys loaded: ${Object.keys(translations[langCode]).length} top-level keys.`);
+                logger.info(`[LanguageUtils] Loaded translations for ${langCode}. Keys loaded: ${Object.keys(translations[langCode]).length} top-level keys.`);
             } catch (e) {
-                console.error(`[LanguageUtils] Error loading or parsing language file ${file} at ${filePath}:`, e);
+                logger.error(`[LanguageUtils] Error loading or parsing language file ${file} at ${filePath}:`, e);
             }
         }
     });
-    console.log(`[LanguageUtils DEBUG] Final translations object after load:`, Object.keys(translations));
+    logger.debug(`[LanguageUtils DEBUG] Final translations object after load:`, Object.keys(translations));
 }
 
+/**
+ * Lädt die Gilden-Sprachkonfiguration aus der Datei.
+ */
 function loadGuildLanguages() {
-    console.log(`[LanguageUtils DEBUG] Attempting to load guild languages from: ${guildLanguagesConfigPath}`);
+    logger.debug(`[LanguageUtils DEBUG] Attempting to load guild languages from: ${guildLanguagesConfigPath}`);
     if (fs.existsSync(guildLanguagesConfigPath)) {
         try {
             guildLanguages = JSON.parse(fs.readFileSync(guildLanguagesConfigPath, 'utf8'));
-            console.log(`[LanguageUtils] Loaded guild language configuration.`);
+            logger.info(`[LanguageUtils] Loaded guild language configuration.`);
         } catch (e) {
-            console.error(`[LanguageUtils] Error loading or parsing guildLanguages.json:`, e);
+            logger.error(`[LanguageUtils] Error loading or parsing guildLanguages.json:`, e);
             guildLanguages = {};
         }
     } else {
-        console.warn(`[LanguageUtils] guildLanguages.json not found at ${guildLanguagesConfigPath}. Starting with empty guild language config.`);
+        logger.warn(`[LanguageUtils] guildLanguages.json not found at ${guildLanguagesConfigPath}. Starting with empty guild language config.`);
         guildLanguages = {};
     }
 }
@@ -59,9 +66,17 @@ loadGuildLanguages();
 
 // --- Externe Funktionen ---
 
+/**
+ * Gibt die Sprache für eine bestimmte Gilde zurück.
+ * @param {string} guildId - Die ID der Gilde.
+ * @returns {string} Der Sprachcode (z.B. 'en', 'de'). Standard ist 'en'.
+ */
 function getGuildLanguage(guildId) {
-    const lang = guildLanguages[guildId] || defaultLanguage;
-    return lang;
+    // Wenn guildLanguages noch nicht geladen ist, lade es jetzt
+    if (Object.keys(guildLanguages).length === 0 && !fs.existsSync(guildLanguagesConfigPath)) {
+        loadGuildLanguages();
+    }
+    return guildLanguages[guildId] || defaultLanguage; // Nutze die defaultLanguage Variable
 }
 
 /**
@@ -77,7 +92,7 @@ function getTranslatedText(langCode, key, replacements = {}) {
 
     // Wenn keine Sprache gefunden wurde (weder die angefragte noch die Standard-Sprache)
     if (!lang) {
-        console.error(`[LanguageUtils] No translations object found for ${langCode} or default language ${defaultLanguage}. Returning key as fallback: ${key}`);
+        logger.error(`[LanguageUtils] No translations object found for '${langCode}' or default language '${defaultLanguage}'. Returning key as fallback: ${key}`);
         return key;
     }
 
@@ -89,8 +104,7 @@ function getTranslatedText(langCode, key, replacements = {}) {
         if (text && typeof text === 'object' && text.hasOwnProperty(keys[i])) {
             text = text[keys[i]];
         } else {
-            // Wenn der Schlüssel auf dieser Ebene nicht gefunden wurde, ist der Text undefined
-            text = undefined;
+            text = undefined; // Schlüssel nicht gefunden auf dieser Ebene
             break;
         }
     }
@@ -110,14 +124,14 @@ function getTranslatedText(langCode, key, replacements = {}) {
             }
             if (defaultLangText !== undefined) {
                 text = defaultLangText;
-                console.warn(`[LanguageUtils] Key '${key}' not found in language '${langCode}'. Using default language '${defaultLanguage}'.`);
+                logger.warn(`[LanguageUtils] Key '${key}' not found in language '${langCode}'. Using default language '${defaultLanguage}'.`);
             } else {
-                console.error(`[LanguageUtils] Key '${key}' not found in default language. Returning key as fallback: ${key}`);
+                logger.error(`[LanguageUtils] Key '${key}' not found in default language '${defaultLanguage}'. Returning key as fallback: ${key}`);
                 return key;
             }
         } else {
             // Wenn es keine Standardsprache gibt oder der Schlüssel auch dort nicht gefunden wurde
-            console.error(`[LanguageUtils] Key '${key}' not found. Returning key as fallback: ${key}`);
+            logger.error(`[LanguageUtils] Key '${key}' not found. Returning key as fallback: ${key}`);
             return key;
         }
     }
@@ -142,11 +156,12 @@ function getTranslatedText(langCode, key, replacements = {}) {
  * Speichert die Sprache für eine bestimmte Gilde in guildLanguages.json.
  * @param {string} guildId - Die ID der Gilde.
  * @param {string} langCode - Der zu setzende Sprachcode (z.B. 'en', 'de').
+ * @returns {boolean} True bei Erfolg, False bei Misserfolg.
  */
 function setGuildLanguage(guildId, langCode) {
     // Check if the chosen language is actually supported by our loaded translations
     if (!translations[langCode]) {
-        console.warn(`[LanguageUtils] Attempted to set unsupported language '${langCode}' for guild ${guildId}.`);
+        logger.warn(`[LanguageUtils] Attempted to set unsupported language '${langCode}' for guild ${guildId}.`);
         return false; // Indicate failure
     }
 
@@ -157,10 +172,10 @@ function setGuildLanguage(guildId, langCode) {
             fs.mkdirSync(dir, { recursive: true });
         }
         fs.writeFileSync(guildLanguagesConfigPath, JSON.stringify(guildLanguages, null, 2), 'utf8');
-        console.log(`[LanguageUtils] Set language for guild ${guildId} to ${langCode} and saved to config.`);
+        logger.info(`[LanguageUtils] Set language for guild ${guildId} to ${langCode} and saved to config.`);
         return true;
     } catch (e) {
-        console.error(`[LanguageUtils] Error saving guild language for guild ${guildId}:`, e);
+        logger.error(`[LanguageUtils] Error saving guild language for guild ${guildId}:`, e);
         return false;
     }
 }
@@ -171,5 +186,5 @@ module.exports = {
     loadTranslations,
     loadGuildLanguages,
     setGuildLanguage,
-    translations: translations // Keep this for now for the language command's check
+    translations: translations // Behalte dies für den Sprachbefehl
 };

@@ -80,7 +80,7 @@ module.exports = {
             .setTimestamp()
             .setFooter({ text: 'Abstimmung läuft...' });
 
-        const replyMessage = await interaction.reply({ embeds: [votingEmbed], fetchReply: true });
+        const replyMessage = await interaction.reply({ embeds: [votingEmbed], fetchReply: true, ephemeral: true });
 
         // Füge Reaktionen für Abstimmung hinzu
         await replyMessage.react('👍');

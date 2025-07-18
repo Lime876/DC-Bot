@@ -19,9 +19,9 @@ module.exports = {
     async execute(interaction) {
         // Holen der Gilden-ID und der Sprache für diese Gilde
         const guildId = interaction.guildId;
-        const lang = getGuildLanguage(guildId); // This will return 'en' or 'de' based on guildLanguages.json
+        const lang = await getGuildLanguage(guildId); // This will return 'en' or 'de' based on guildLanguages.json
 
-        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }); // Verzögerte Antwort, da API-Anfragen dauern können
+        await interaction.deferReply({ ephemeral: true }); // Verzögerte Antwort, da API-Anfragen dauern können
 
         const city = interaction.options.getString('city');
 
@@ -31,7 +31,7 @@ module.exports = {
             return interaction.editReply({
                 // Verwende die korrekte, verschachtelte Schlüsselstruktur
                 content: getTranslatedText(lang, 'bot_messages.api_key_missing'),
-                flags: [MessageFlags.Ephemeral]
+                ephemeral: true
             });
         }
 
@@ -44,7 +44,7 @@ module.exports = {
                 return interaction.editReply({
                     // Verwende die korrekte, verschachtelte Schlüsselstruktur
                     content: getTranslatedText(lang, 'weather_command.weather_no_coords', { city: city }),
-                    flags: [MessageFlags.Ephemeral]
+                    ephemeral: true
                 });
             }
 
@@ -61,7 +61,7 @@ module.exports = {
                 return interaction.editReply({
                     // Verwende die korrekte, verschachtelte Schlüsselstruktur
                     content: getTranslatedText(lang, 'weather_command.weather_api_error', { errorMessage: weatherData.message || 'Unbekannter Fehler' }),
-                    flags: [MessageFlags.Ephemeral]
+                    ephemeral: true
                 });
             }
 
@@ -102,8 +102,8 @@ module.exports = {
             console.error('Fehler beim Abrufen der Wetterdaten:', error);
             await interaction.editReply({
                 // Verwende die korrekte, verschachtelte Schlüsselstruktur
-                content: getTranslatedText(lang, 'weather_command.weather_generic_error'),
-                flags: [MessageFlags.Ephemeral]
+                content: getTranslatedText(lang, 'weather_command.ERROR_API'),
+                ephemeral: true
             });
         }
     },

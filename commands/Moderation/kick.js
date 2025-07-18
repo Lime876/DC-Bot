@@ -14,7 +14,7 @@ module.exports = {
         .setRequired(false))
     .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers),
 
-    category: 'Morderation', // <-- NEU: Füge diese Zeile hinzu
+    category: 'Moderation', // <-- NEU: Füge diese Zeile hinzu
 
   async execute(interaction) {
     const target = interaction.options.getUser('user');
@@ -42,7 +42,7 @@ module.exports = {
         )
         .setTimestamp();
 
-      await interaction.reply({ embeds: [embed] });
+      await interaction.reply({ embeds: [embed], ephemeral: true });
 
       // Optional: Log in einen Logchannel senden
       const logChannelId = process.env.LOG_CHANNEL_ID;

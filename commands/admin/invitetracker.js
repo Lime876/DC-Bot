@@ -3,8 +3,9 @@ const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ChannelType, Mes
 const fs = require('fs');
 const path = require('path');
 const { getGuildLanguage, getTranslatedText } = require('../../utils/languageUtils'); // Importiere Sprachfunktionen
+const logger = require('../../utils/logger'); // Importiere den Logger
 
-const inviteDataPath = path.join(__dirname, '../data/inviteData.json');
+const inviteDataPath = path.join(__dirname, '../../data/inviteData.json');
 const trackerConfigPath = path.join(__dirname, '../../data/trackerConfig.json');
 
 /**
@@ -16,7 +17,7 @@ const loadInviteData = () => {
         try {
             return JSON.parse(fs.readFileSync(inviteDataPath, 'utf8'));
         } catch (e) {
-            console.error(`[InviteTracker] Fehler beim Parsen von ${inviteDataPath}:`, e);
+            logger.error(`[InviteTracker] Fehler beim Parsen von ${inviteDataPath}:`, e);
             return {};
         }
     }
@@ -35,7 +36,7 @@ const saveInviteData = (data) => {
         }
         fs.writeFileSync(inviteDataPath, JSON.stringify(data, null, 2));
     } catch (e) {
-        console.error(`[InviteTracker] Fehler beim Schreiben in ${inviteDataPath}:`, e);
+        logger.error(`[InviteTracker] Fehler beim Schreiben in ${inviteDataPath}:`, e);
     }
 };
 
@@ -48,7 +49,7 @@ const loadTrackerConfig = () => {
         try {
             return JSON.parse(fs.readFileSync(trackerConfigPath, 'utf8'));
         } catch (e) {
-            console.error(`[InviteTracker] Fehler beim Parsen von ${trackerConfigPath}:`, e);
+            logger.error(`[InviteTracker] Fehler beim Parsen von ${trackerConfigPath}:`, e);
             return {};
         }
     }
@@ -67,7 +68,7 @@ const saveTrackerConfig = (config) => {
         }
         fs.writeFileSync(trackerConfigPath, JSON.stringify(config, null, 2));
     } catch (e) {
-        console.error(`[InviteTracker] Fehler beim Schreiben in ${trackerConfigPath}:`, e);
+        logger.error(`[InviteTracker] Fehler beim Schreiben in ${trackerConfigPath}:`, e);
     }
 };
 
@@ -80,6 +81,7 @@ module.exports = {
             'en-US': getTranslatedText('en', 'invitetracker_command.DESCRIPTION'),
         })
         .setDMPermission(false) // Kann nicht in DMs verwendet werden
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild) // Standardberechtigung für den Befehl
         .addSubcommand(subcommand =>
             subcommand
                 .setName('status')
@@ -146,12 +148,12 @@ module.exports = {
                     'en-US': getTranslatedText('en', 'invitetracker_command.LEADERBOARD_SUBCOMMAND_DESCRIPTION'),
                 })),
 
-    category: 'Admin',
+    category: 'Admin', // Kategorie des Befehls
 
     async execute(interaction) {
         const subcommand = interaction.options.getSubcommand();
         const guildId = interaction.guild.id;
-        const lang = getGuildLanguage(guildId);
+        const lang = await getGuildLanguage(guildId);
         let trackerConfig = loadTrackerConfig();
         let inviteData = loadInviteData();
 
@@ -162,12 +164,15 @@ module.exports = {
 
         const isEnabled = trackerConfig[guildId].enabled;
 
-        // Manuelle Berechtigungsprüfung für "on" und "off" Subcommands und "leaderboard"
+        // Die Berechtigungsprüfung wurde in setDefaultMemberPermissions verschoben,
+        // aber für 'my_invites' und 'user_invites' benötigen wir keine ManageGuild.
+        // Daher wird hier nur für 'on' und 'off' eine zusätzliche Prüfung gemacht.
+        // Leaderboard benötigt ManageGuild, da es serverseitige Daten anzeigt.
         if (['on', 'off', 'leaderboard'].includes(subcommand)) {
             if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
                 return interaction.reply({
                     content: getTranslatedText(lang, 'permissions.MISSING_PERMISSION_SINGULAR', { permission: getTranslatedText(lang, 'permissions.MANAGE_GUILD') }),
-                    flags: [MessageFlags.Ephemeral]
+                    ephemeral: true // Verwende ephemeral: true statt flags
                 });
             }
         }
@@ -191,10 +196,10 @@ module.exports = {
 
         } else if (subcommand === 'on') {
             if (isEnabled) {
-                return interaction.reply({ content: getTranslatedText(lang, 'invitetracker_command.ALREADY_ENABLED'), flags: [MessageFlags.Ephemeral] });
+                return interaction.reply({ content: getTranslatedText(lang, 'invitetracker_command.ALREADY_ENABLED'), ephemeral: true });
             }
 
-            const logChannel = interaction.options.getChannel('log_channel'); // Name der Option angepasst
+            const logChannel = interaction.options.getChannel('log_channel');
             trackerConfig[guildId].enabled = true;
             trackerConfig[guildId].channelId = logChannel.id;
             saveTrackerConfig(trackerConfig);
@@ -204,32 +209,32 @@ module.exports = {
                 // Überprüfe, ob der Bot die Berechtigung 'Manage Guild' oder 'Manage Channels' hat,
                 // um Invites zu fetchen. Discord.js benötigt 'Manage Guild' für guild.invites.fetch().
                 if (!interaction.guild.members.me.permissions.has(PermissionFlagsBits.ManageGuild)) {
-                    console.warn(`[Invite Tracker] Bot lacks ManageGuild permission in guild ${guildId}. Cannot fetch invites.`);
+                    logger.warn(`[Invite Tracker] Bot lacks ManageGuild permission in guild ${guildId}. Cannot fetch invites.`);
                     return interaction.reply({
                         content: getTranslatedText(lang, 'invitetracker_command.ENABLE_FAIL_PERMS'),
-                        flags: [MessageFlags.Ephemeral]
+                        ephemeral: true
                     });
                 }
                 await interaction.guild.invites.fetch();
-                console.log(`[Invite Tracker] Invites für Server "${interaction.guild.name}" (${guildId}) neu gecacht nach Aktivierung.`);
+                logger.info(`[Invite Tracker] Invites für Server "${interaction.guild.name}" (${guildId}) neu gecacht nach Aktivierung.`);
             } catch (error) {
-                console.error(`[Invite Tracker] Konnte Invites für Server ${guildId} nicht cachen:`, error);
+                logger.error(`[Invite Tracker] Konnte Invites für Server ${guildId} nicht cachen:`, error);
                 return interaction.reply({
                     content: getTranslatedText(lang, 'invitetracker_command.ENABLE_FAIL_PERMS'),
-                    flags: [MessageFlags.Ephemeral]
+                    ephemeral: true
                 });
             }
 
             const enableEmbed = new EmbedBuilder()
                 .setColor(0x00FF00)
-                .setTitle(getTranslatedText(lang, 'invitetracker_command.ENABLE_TITLE'))
-                .setDescription(getTranslatedText(lang, 'invitetracker_command.ENABLE_DESCRIPTION', { logChannel: logChannel.toString() }))
+                .setTitle(getTranslatedText(lang, 'invitetracker_command.ENABLE_SUCCESS_TITLE')) // Neuer Schlüssel
+                .setDescription(getTranslatedText(lang, 'invitetracker_command.ENABLE_SUCCESS_DESCRIPTION', { logChannel: logChannel.toString() })) // Neuer Schlüssel
                 .setTimestamp();
-            await interaction.reply({ embeds: [enableEmbed] });
+            await interaction.reply({ embeds: [enableEmbed], ephemeral: true });
 
         } else if (subcommand === 'off') {
             if (!isEnabled) {
-                return interaction.reply({ content: getTranslatedText(lang, 'invitetracker_command.ALREADY_DISABLED'), flags: [MessageFlags.Ephemeral] });
+                return interaction.reply({ content: getTranslatedText(lang, 'invitetracker_command.ALREADY_DISABLED'), ephemeral: true });
             }
 
             trackerConfig[guildId].enabled = false;
@@ -238,14 +243,14 @@ module.exports = {
 
             const disableEmbed = new EmbedBuilder()
                 .setColor(0xFF0000)
-                .setTitle(getTranslatedText(lang, 'invitetracker_command.DISABLE_TITLE'))
-                .setDescription(getTranslatedText(lang, 'invitetracker_command.DISABLE_DESCRIPTION'))
+                .setTitle(getTranslatedText(lang, 'invitetracker_command.DISABLE_SUCCESS_TITLE')) // Neuer Schlüssel
+                .setDescription(getTranslatedText(lang, 'invitetracker_command.DISABLE_SUCCESS_DESCRIPTION')) // Neuer Schlüssel
                 .setTimestamp();
-            await interaction.reply({ embeds: [disableEmbed] });
+            await interaction.reply({ embeds: [disableEmbed], ephemeral: true });
 
         } else if (subcommand === 'my_invites' || subcommand === 'user_invites') {
             if (!isEnabled) {
-                return interaction.reply({ content: getTranslatedText(lang, 'invitetracker_command.NOT_ENABLED'), flags: [MessageFlags.Ephemeral] });
+                return interaction.reply({ content: getTranslatedText(lang, 'invitetracker_command.NOT_ENABLED'), ephemeral: true });
             }
 
             const targetUser = subcommand === 'my_invites' ? interaction.user : interaction.options.getUser('user');
@@ -258,14 +263,14 @@ module.exports = {
                 totalUses += inv.uses;
                 if (inv.maxUses === 0 || inv.uses < inv.maxUses) { // Ist noch nicht ausgeschöpft
                     if (!inv.expiresAt || inv.expiresAt > Date.now()) { // Ist nicht abgelaufen
-                         activeInvitesCount++;
+                        activeInvitesCount++;
                     }
                 }
             });
 
             const userEmbed = new EmbedBuilder()
                 .setColor(0x3498db)
-                .setTitle(getTranslatedText(lang, 'invitetracker_command.USER_STATS_TITLE', { userTag: targetUser.tag }))
+                .setTitle(getTranslatedText(lang, 'invitetracker_command.YOUR_INVITES_TITLE', { userTag: targetUser.tag })) // Angepasst
                 .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
                 .addFields(
                     { name: getTranslatedText(lang, 'invitetracker_command.FIELD_TOTAL_INVITES'), value: `${totalUses}`, inline: true },
@@ -279,20 +284,20 @@ module.exports = {
                     { name: getTranslatedText(lang, 'invitetracker_command.FIELD_YOUR_INVITES'), value: inviteCodesList.length > 1024 ? inviteCodesList.substring(0, 1020) + '...' : inviteCodesList, inline: false }
                 );
             } else {
-                 userEmbed.addFields(
+                userEmbed.addFields(
                     { name: getTranslatedText(lang, 'invitetracker_command.FIELD_YOUR_INVITES'), value: getTranslatedText(lang, 'invitetracker_command.NO_ACTIVE_INVITES'), inline: false }
                 );
             }
 
-            await interaction.reply({ embeds: [userEmbed], ephemeral: false });
+            await interaction.reply({ embeds: [userEmbed], ephemeral: true });
         }
         else if (subcommand === 'leaderboard') {
             if (!isEnabled) {
-                return interaction.reply({ content: getTranslatedText(lang, 'invitetracker_command.NOT_ENABLED'), flags: [MessageFlags.Ephemeral] });
+                return interaction.reply({ content: getTranslatedText(lang, 'invitetracker_command.NOT_ENABLED'), ephemeral: true });
             }
 
             if (!inviteData[guildId] || Object.keys(inviteData[guildId]).length === 0) {
-                return interaction.reply({ content: getTranslatedText(lang, 'invitetracker_command.NO_INVITE_DATA_LEADERBOARD'), flags: [MessageFlags.Ephemeral] });
+                return interaction.reply({ content: getTranslatedText(lang, 'invitetracker_command.NO_INVITE_DATA_LEADERBOARD'), ephemeral: true });
             }
 
             const inviterStats = {}; // { inviterId: totalUses }
@@ -329,10 +334,10 @@ module.exports = {
             }
 
             if (leaderboardEmbed.data.fields && leaderboardEmbed.data.fields.length === 0) {
-                 leaderboardEmbed.setDescription(getTranslatedText(lang, 'invitetracker_command.NO_STATS_AVAILABLE'));
+                leaderboardEmbed.setDescription(getTranslatedText(lang, 'invitetracker_command.NO_STATS_AVAILABLE'));
             }
 
-            await interaction.reply({ embeds: [leaderboardEmbed], ephemeral: false });
+            await interaction.reply({ embeds: [leaderboardEmbed], ephemeral: true });
         }
     },
 };

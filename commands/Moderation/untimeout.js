@@ -14,7 +14,7 @@ module.exports = {
         .setRequired(false))
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
 
-category: 'Morderation', // <-- NEU: Füge diese Zeile hinzu
+category: 'Moderation', // <-- NEU: Füge diese Zeile hinzu
 
   async execute(interaction) {
     const member = interaction.options.getMember('mitglied');

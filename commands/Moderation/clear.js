@@ -61,6 +61,7 @@ module.exports = {
       }
       await interaction.editReply({
         content: `🧹 ${deleted.size} Nachrichten gelöscht.`,
+        ephemeral: true,
       });
 
     } catch (error) {

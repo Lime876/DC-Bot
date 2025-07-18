@@ -121,7 +121,7 @@ module.exports = {
                 .setFooter({ text: `Ereignis-ID: ${newEvent.id} | Erstellt von ${interaction.user.tag}` })
                 .setTimestamp();
 
-            await interaction.reply({ embeds: [addEmbed] });
+            await interaction.reply({ embeds: [addEmbed], ephemeral: true });
 
         } else if (subcommand === 'list') {
             const events = calendarData[guildId];
@@ -156,7 +156,7 @@ module.exports = {
                 );
             }
 
-            await interaction.reply({ embeds: [listEmbed] });
+            await interaction.reply({ embeds: [listEmbed], ephemeral: true });
 
         } else if (subcommand === 'remove') {
             const eventId = interaction.options.getString('event_id');

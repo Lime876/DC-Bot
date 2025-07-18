@@ -15,7 +15,14 @@ const spamDeletedMessageIds = new Set();
  */
 const recentMessages = new Map();
 
+/**
+ * @type {Set<string>} Ein Set, das die IDs von Sprachkanälen speichert, die vom JTC-System erstellt wurden.
+ * Wird verwendet, um nur diese Kanäle zu löschen, wenn sie leer werden.
+ */
+const activeJTCChannels = new Set();
+
 module.exports = {
     spamDeletedMessageIds,
-    recentMessages
+    recentMessages,
+    activeJTCChannels
 };

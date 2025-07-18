@@ -1,97 +1,95 @@
-// watcher.js
+// utils/watcher.js
 const chokidar = require('chokidar');
 const { spawn } = require('child_process');
+const path = require('path');
 
-let botProcess; // Hält den aktuellen Bot-Prozess
-let isRestarting = false; // Flag, um Mehrfachstarts während eines Neustarts zu verhindern
+let botProcess = null; // Speichert die Child-Prozess-Instanz
 
+/**
+ * Startet den Bot-Prozess. Beendet einen bestehenden Prozess, falls vorhanden.
+ */
 function startBot() {
-    if (isRestarting) return; // Wenn bereits ein Neustart läuft, nichts tun
-    isRestarting = true; // Neustart beginnt
-
     if (botProcess) {
-        console.log('🔄 Beende bestehenden Bot-Prozess...');
-        // Sende ein SIGTERM-Signal für ein sauberes Herunterfahren
-        // Auf Windows kann 'SIGKILL' manchmal zuverlässiger sein, aber SIGTERM ist besser für saubere Exits.
-        // Wenn SIGTERM nicht funktioniert, kannst du SIGKILL versuchen, aber das ist weniger elegant.
-        botProcess.kill('SIGTERM');
-
-        // Warte, bis der Prozess beendet ist, bevor ein neuer gestartet wird
-        botProcess.on('close', (code) => {
-            console.log(`✅ Bot-Prozess beendet mit Code: ${code}`);
-            spawnNewBotProcess();
-        });
-
-        botProcess.on('error', (err) => {
-            console.error('⚠️ Fehler beim Beenden des Bot-Prozesses:', err);
-            spawnNewBotProcess(); // Versuche trotzdem einen neuen Prozess zu starten
-        });
-
-    } else {
-        // Erster Start des Bots
-        spawnNewBotProcess();
+        console.log('👀 Beende bestehenden Bot-Prozess...');
+        // Versuche, den Prozess elegant zu beenden (SIGTERM), dann erzwinge (SIGKILL)
+        botProcess.kill('SIGTERM'); 
+        // Setze einen Timeout, um den Prozess nach 5 Sekunden zwangsweise zu beenden, falls SIGTERM nicht funktioniert
+        setTimeout(() => {
+            if (botProcess && !botProcess.killed) {
+                console.warn('⚠️ Bot-Prozess wurde nicht elegant beendet. Erzwinge Beendigung...');
+                botProcess.kill('SIGKILL');
+            }
+        }, 5000); // 5 Sekunden Timeout
     }
-}
 
-function spawnNewBotProcess() {
     console.log('🚀 Starte neuen Bot-Prozess...');
-    botProcess = spawn('node', ['index.js'], { stdio: 'inherit' });
+    // Verwende 'inherit', um die Konsolenausgabe des Bots in der Konsole des Watchers zu sehen
+    botProcess = spawn('node', [path.join(__dirname, '../index.js')], { stdio: 'inherit' });
 
+    // Event-Listener für das Beenden des Bot-Prozesses
     botProcess.on('exit', (code, signal) => {
-        // Setze botProcess auf null, wenn der Prozess beendet ist
-        // Dies ist wichtig, falls der Bot aus anderen Gründen als einem Neustart beendet wird
-        // und um zu vermeiden, dass ein beendeter Prozess erneut gekillt wird.
-        if (!isRestarting) { // Nur wenn es KEIN geplanter Neustart war
-             console.log(`🤖 Bot-Prozess unerwartet beendet mit Code ${code} und Signal ${signal}.`);
-             // Hier könntest du Logik hinzufügen, um den Bot bei Absturz neu zu starten
-        }
-        botProcess = null;
-        isRestarting = false; // Neustart abgeschlossen
+        console.log(`Bot-Prozess beendet mit Code ${code} und Signal ${signal}`);
+        botProcess = null; // Referenz löschen, wenn der Prozess beendet ist
     });
 
-    // Optional: Füge einen Error-Handler für den neuen Prozess hinzu
+    // Event-Listener für Fehler beim Starten des Bot-Prozesses
     botProcess.on('error', (err) => {
-        console.error('❌ Fehler beim Starten des neuen Bot-Prozesses:', err);
-        isRestarting = false;
+        console.error('❌ Fehler beim Starten des Bot-Prozesses:', err);
     });
 }
 
-
-const watcher = chokidar.watch(['./commands', './events', './index.js', './data', './locales'], { // index.js, data und locales auch überwachen
-    ignored: /(^|[\/\\])\../, // ignoriert versteckte Dateien
-    persistent: true,
-    ignoreInitial: true // Wichtig: Feuert beim Start nicht für alle vorhandenen Dateien ein "change"-Event
-});
-
-watcher.on('change', (path) => {
-    console.log(`🔁 Datei geändert: ${path}`);
-    startBot(); // Ruft die überarbeitete Start-Funktion auf
-});
-
-watcher.on('add', (path) => { // Auch bei neuen Dateien neu starten
-    console.log(`➕ Neue Datei hinzugefügt: ${path}`);
-    startBot();
-});
-
-watcher.on('unlink', (path) => { // Auch bei gelöschten Dateien neu starten
-    console.log(`➖ Datei entfernt: ${path}`);
-    startBot();
-});
-
-
-// Initialer Start des Bots, wenn der Watcher gestartet wird
-console.log('👀 Starte Dateiwächter und initialen Bot-Start...');
+// Initialer Start des Bots beim Start des Watchers
 startBot();
 
-// Beende den Bot-Prozess sauber, wenn der Watcher selbst beendet wird (z.B. mit Strg+C)
+// Überwache Änderungen in .js- und .json-Dateien, schließe node_modules und data-Ordner aus
+const watcher = chokidar.watch(['./**/*.js', './**/*.json', './.env'], {
+    ignored: [
+        'node_modules', 
+        'data', // Ignoriere Änderungen im data-Ordner (z.B. Konfigurationsupdates), um Endlosschleifen zu vermeiden
+        '.git', 
+        '*.log' // Ignoriere Log-Dateien
+    ],
+    persistent: true, // Behalte den Watcher am Laufen
+    ignoreInitial: true // Löse beim Start keine 'add'-Events aus
+});
+
+// Bei einer erkannten Dateiänderung: Bot neu starten
+watcher.on('change', (filePath) => {
+    console.log(`\n🔄 Datei geändert: ${filePath}. Starte Bot neu...`);
+    startBot();
+});
+
+// Fehlerbehandlung für den Watcher selbst
+watcher.on('error', (error) => console.error('Watcher-Fehler:', error));
+
+console.log('👀 Dateiwächter gestartet. Initialer Bot-Prozess gestartet.');
+
+// Behandle das elegante Beenden des Watchers (z.B. bei Strg+C)
 process.on('SIGINT', () => {
-    console.log('\n graceful shutdown des Watchers...');
+    console.log('\n🛑 SIGINT empfangen. Schließe Watcher und Bot-Prozess...');
     if (botProcess) {
-        botProcess.kill('SIGTERM'); // Sende SIGTERM an den Bot-Prozess
-        botProcess.on('close', () => {
-            process.exit(0); // Beende den Watcher-Prozess, nachdem der Bot beendet wurde
-        });
-    } else {
-        process.exit(0);
+        botProcess.kill('SIGTERM');
+        setTimeout(() => {
+            if (botProcess && !botProcess.killed) {
+                botProcess.kill('SIGKILL');
+            }
+        }, 5000);
     }
+    watcher.close(); // Schließe den Dateiwächter
+    process.exit(0); // Beende den Watcher-Prozess
+});
+
+// Handle SIGTERM (z.B. von Prozessmanagern)
+process.on('SIGTERM', () => {
+    console.log('\n🛑 SIGTERM empfangen. Schließe Watcher und Bot-Prozess...');
+    if (botProcess) {
+        botProcess.kill('SIGTERM');
+        setTimeout(() => {
+            if (botProcess && !botProcess.killed) {
+                botProcess.kill('SIGKILL');
+            }
+        }, 5000);
+    }
+    watcher.close();
+    process.exit(0);
 });

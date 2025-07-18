@@ -1,171 +1,111 @@
-// events/messageCreate/spamDetection.js
-const { Events, PermissionsBitField, EmbedBuilder, MessageFlags } = require('discord.js');
-const { getGuildLanguage, getTranslatedText } = require('../utils/languageUtils');
-const { getGuildSpamConfig } = require('../commands/Moderation/spamconfig');
+// events/spamDetection.js
+// Dieses Event ist optional, da die Hauptlogik der Spam-Erkennung
+// bereits in messageCreate.js integriert ist.
+// Es könnte für zukünftige, komplexere oder spezialisierte Spam-Erkennungslogik verwendet werden,
+// die nicht direkt an messageCreate gebunden ist.
 
-// Temporäre In-Memory-Flutkontrolle (für ein einfaches Beispiel)
-const userMessageHistory = new Map();
+const { getSpamConfig } = require('../commands/Moderation/spamconfig');
+const { getTranslatedText, getGuildLanguage } = require('../utils/languageUtils');
+const { logEvent } = require('../utils/logUtils');
+const logger = require('../utils/logger'); // Importiere den neuen Logger
 
 module.exports = {
-    name: Events.MessageCreate,
-    async execute(message) {
-        // Ignoriere Nachrichten von Bots
-        if (message.author.bot) return;
+    name: 'spamDetection', // Dies ist ein benutzerdefiniertes Event, das von messageCreate ausgelöst werden könnte
+    async execute(message, spamType) {
+        // Diese Datei ist derzeit nicht direkt an ein Discord.js-Event gebunden.
+        // Die Logik zur Spam-Erkennung und -Behandlung ist in messageCreate.js.
+        // Wenn du hier spezifische, ausgelöste Aktionen für verschiedene Spam-Typen benötigst,
+        // müsste messageCreate.js dieses Event mit client.emit('spamDetection', message, spamType) triggern.
 
-        // Abrufen der server-spezifischen Spam-Konfiguration
+        // Beispiel für eine zukünftige Verwendung, falls du dieses Event nutzen möchtest:
+        /*
+        if (!message.guild) return;
+
         const guildId = message.guild.id;
-        const currentConfig = getGuildSpamConfig(guildId);
+        const lang = await getGuildLanguage(guildId);
+        const spamConfig = getSpamConfig(guildId);
 
-        // Wenn die Spam-Erkennung für diesen Server nicht aktiviert ist, frühzeitig zurückkehren
-        if (!currentConfig.enabled) {
+        if (!spamConfig.enabled) {
             return;
         }
 
-        // Ignoriere Nachrichten von Benutzern mit Administrator- oder Nachrichten-Verwalten-Berechtigungen
-        if (message.member && (
-            message.member.permissions.has(PermissionsBitField.Flags.Administrator) ||
-            message.member.permissions.has(PermissionsBitField.Flags.ManageMessages)
-        )) {
-            return;
+        logger.info(`[SpamDetection Event] Spam des Typs '${spamType}' von ${message.author.tag} erkannt.`);
+
+        let logTitleKey = '';
+        let logDescriptionKey = '';
+        let userNotificationKey = '';
+        let logColor = 'Red'; // Standardfarbe für Spam-Logs
+
+        switch (spamType) {
+            case 'link':
+                logTitleKey = 'spam_detection.LINK_DELETED_TITLE';
+                logDescriptionKey = 'spam_detection.LINK_DELETED_DESCRIPTION';
+                userNotificationKey = 'spam_detection.LINK_DELETED_USER_NOTIFICATION';
+                logColor = 'Red';
+                break;
+            case 'character':
+                logTitleKey = 'spam_detection.CHARACTER_SPAM_DELETED_TITLE';
+                logDescriptionKey = 'spam_detection.CHARACTER_SPAM_DELETED_DESCRIPTION';
+                userNotificationKey = 'spam_detection.CHARACTER_SPAM_USER_NOTIFICATION';
+                logColor = 'Orange';
+                break;
+            case 'emote':
+                logTitleKey = 'spam_detection.EMOTE_SPAM_DELETED_TITLE';
+                logDescriptionKey = 'spam_detection.EMOTE_SPAM_DELETED_DESCRIPTION';
+                userNotificationKey = 'spam_detection.EMOTE_SPAM_USER_NOTIFICATION';
+                logColor = 'Yellow';
+                break;
+            case 'sticker':
+                logTitleKey = 'spam_detection.STICKER_SPAM_DELETED_TITLE';
+                logDescriptionKey = 'spam_detection.STICKER_SPAM_DELETED_DESCRIPTION';
+                userNotificationKey = 'spam_detection.STICKER_SPAM_USER_NOTIFICATION';
+                logColor = 'Purple';
+                break;
+            case 'raid':
+                logTitleKey = 'spam_detection.RAID_DETECTED_TITLE';
+                logDescriptionKey = 'spam_detection.RAID_DETECTED_DESCRIPTION';
+                userNotificationKey = null; // Keine direkte DM für Raid-Erkennung an einzelne Benutzer
+                logColor = 'DarkRed';
+                break;
+            default:
+                logger.warn(`[SpamDetection Event] Unbekannter Spam-Typ: ${spamType}`);
+                return;
         }
 
-        const lang = getGuildLanguage(message.guild.id);
-        let spamDetected = false;
-        let reason = '';
-
-        // --- 1. Überprüfung auf Discord-Einladungslinks (bestehend) ---
-        if (currentConfig.inviteDetectionEnabled && !spamDetected) {
-            const inviteRegex = /(discord\.gg\/|discordapp\.com\/invite\/)([a-zA-Z0-9]+)/g;
-            if (inviteRegex.test(message.content)) {
-                spamDetected = true;
-                reason = getTranslatedText(lang, 'spam_detection.invite_link_detected');
+        try {
+            // Lösche die Nachricht, falls sie noch existiert und nicht bereits gelöscht wurde
+            if (!message.deleted) {
+                await message.delete().catch(err => logger.error(`[SpamDetection Event] Fehler beim Löschen der Nachricht: ${err.message}`));
             }
+
+            // Logge das Ereignis
+            await logEvent(guildId, 'spam_detection', {
+                logTitle: getTranslatedText(lang, logTitleKey),
+                logDescription: getTranslatedText(lang, logDescriptionKey, {
+                    userTag: message.author.tag,
+                    channelMention: message.channel.toString(),
+                    // Füge hier weitere dynamische Daten hinzu, je nach Spam-Typ
+                    link: spamType === 'link' ? message.content.match(/(https?:\/\/[^\s]+)/)?.[0] : undefined // Beispiel
+                }),
+                fields: [
+                    { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_AUTHOR'), value: `${message.author.tag} (${message.author.id})`, inline: true },
+                    { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_CHANNEL'), value: message.channel.name, inline: true },
+                    { name: getTranslatedText(lang, 'message_delete.LOG_FIELD_CONTENT'), value: message.content || getTranslatedText(lang, 'message_delete.NO_CONTENT'), inline: false }
+                ],
+                color: logColor
+            });
+
+            // Sende Benachrichtigung an den Benutzer, falls zutreffend
+            if (userNotificationKey) {
+                await message.author.send(getTranslatedText(lang, userNotificationKey, {
+                    // Füge hier dynamische Daten für die DM hinzu
+                    link: spamType === 'link' ? message.content.match(/(https?:\/\/[^\s]+)/)?.[0] : undefined
+                })).catch(err => logger.warn(`[SpamDetection Event] Konnte DM an ${message.author.tag} nicht senden:`, err.message));
+            }
+
+        } catch (error) {
+            logger.error(`[SpamDetection Event] Unerwarteter Fehler bei der Spam-Behandlung für Typ ${spamType}:`, error);
         }
-
-        // --- 2. NEU: Überprüfung auf Gesperrte Links ---
-        if (currentConfig.blacklistedLinks && currentConfig.blacklistedLinks.length > 0 && !spamDetected) {
-            const urlRegex = /(https?:\/\/[^\s]+)/g; // Regulärer Ausdruck, um URLs zu finden
-            const foundUrls = message.content.match(urlRegex);
-
-            if (foundUrls) {
-                for (const url of foundUrls) {
-                    try {
-                        const { hostname } = new URL(url); // Hostname aus der URL extrahieren
-                        const fullPath = new URL(url).host + new URL(url).pathname; // Hostname + Pfad
-
-                        for (const blacklistedEntry of currentConfig.blacklistedLinks) {
-                            // Normalisiere den blacklistedEntry für den Vergleich
-                            const normalizedBlacklistedEntry = blacklistedEntry.replace(/^(https?:\/\/(www\.)?)/i, '').replace(/\/$/, '');
-
-                            // Prüfe, ob der Hostname übereinstimmt ODER der volle Pfad übereinstimmt
-                            // .includes() fängt auch Subdomains oder Subpfade ab (z.B. "malicious.com" blockiert "sub.malicious.com")
-                            if (hostname.includes(normalizedBlacklistedEntry) || fullPath.includes(normalizedBlacklistedEntry)) {
-                                spamDetected = true;
-                                reason = getTranslatedText(lang, 'spam_detection.blacklisted_link_detected');
-                                break; // Verlasse die innere Schleife, da ein Treffer gefunden wurde
-                            }
-                        }
-                    } catch (e) {
-                        // Ungültige URL in der Nachricht, einfach ignorieren
-                        console.warn(`[Spam Detection] Ungültige URL in Nachricht ${message.id}: ${url} - ${e.message}`);
-                    }
-                    if (spamDetected) break; // Verlasse die äußere Schleife, wenn Spam erkannt wurde
-                }
-            }
-        }
-
-
-        // --- 3. Überprüfung auf übermäßige Großschreibung (bestehend) ---
-        if (!spamDetected) {
-            const content = message.content.replace(/[^a-zA-Z]/g, '');
-            if (content.length > 10) {
-                let uppercaseCount = 0;
-                for (const char of content) {
-                    if (char === char.toUpperCase() && char !== char.toLowerCase()) {
-                        uppercaseCount++;
-                    }
-                }
-                if (uppercaseCount / content.length > currentConfig.excessiveCapsThreshold) {
-                    spamDetected = true;
-                    reason = getTranslatedText(lang, 'spam_detection.excessive_caps_detected');
-                }
-            }
-        }
-
-        // --- 4. Überprüfung auf Blacklisted Words (gesperrte Wörter) (bestehend) ---
-        if (!spamDetected) {
-            const lowerCaseContent = message.content.toLowerCase();
-            for (const word of currentConfig.blacklistedWords) {
-                if (lowerCaseContent.includes(word.toLowerCase())) {
-                    spamDetected = true;
-                    reason = getTranslatedText(lang, 'spam_detection.blacklisted_word_detected');
-                    break;
-                }
-            }
-        }
-
-        // --- 5. Einfache Flood-Erkennung (bestehend) ---
-        if (!spamDetected) {
-            const now = Date.now();
-            const userId = message.author.id;
-
-            if (!userMessageHistory.has(userId)) {
-                userMessageHistory.set(userId, []);
-            }
-
-            const history = userMessageHistory.get(userId);
-            history.push({ timestamp: now, content: message.content });
-
-            const recentMessages = history.filter(msg => now - msg.timestamp < currentConfig.floodThreshold.timeframeMs);
-            userMessageHistory.set(userId, recentMessages);
-
-            if (recentMessages.length > currentConfig.floodThreshold.maxMessages) {
-                spamDetected = true;
-                reason = getTranslatedText(lang, 'spam_detection.flood_detected');
-            } else {
-                const identicalMessages = recentMessages.filter(msg => msg.content === message.content);
-                if (identicalMessages.length >= currentConfig.floodThreshold.sameMessageThreshold) {
-                    spamDetected = true;
-                    reason = getTranslatedText(lang, 'spam_detection.flood_detected');
-                }
-            }
-        }
-
-        // --- Aktion ausführen, wenn Spam erkannt wurde ---
-        if (spamDetected) {
-            try {
-                // Nachricht löschen
-                if (message.deletable) {
-                    await message.delete();
-                }
-
-                // Benutzer benachrichtigen (privat oder als ephemere Nachricht)
-                await message.author.send({
-                    content: `${getTranslatedText(lang, 'spam_detection.message_deleted')} ${reason}`,
-                    flags: [MessageFlags.Ephemeral]
-                }).catch(err => console.error(`Konnte Benutzer ${message.author.tag} nicht per DM benachrichtigen:`, err));
-
-                // Im Moderations-Log-Kanal protokollieren
-                if (currentConfig.moderationLogChannelId) {
-                    const modLogChannel = message.guild.channels.cache.get(currentConfig.moderationLogChannelId);
-                    if (modLogChannel && modLogChannel.isTextBased()) {
-                        const embed = new EmbedBuilder()
-                            .setColor(0xFF0000)
-                            .setTitle(getTranslatedText(lang, 'spam_detection.moderation_log_title'))
-                            .addFields(
-                                { name: getTranslatedText(lang, 'spam_detection.moderation_log_user'), value: `${message.author.tag} (${message.author.id})`, inline: true },
-                                { name: getTranslatedText(lang, 'spam_detection.moderation_log_channel'), value: `#${message.channel.name} (${message.channel.id})`, inline: true },
-                                { name: getTranslatedText(lang, 'spam_detection.moderation_log_reason'), value: reason },
-                                { name: getTranslatedText(lang, 'spam_detection.moderation_log_content'), value: `\`\`\`\n${message.content.substring(0, 1000)}\n\`\`\`` || 'No content (e.g., empty message)', }
-                            )
-                            .setTimestamp();
-                        await modLogChannel.send({ embeds: [embed] }).catch(err => console.error("Error sending moderation log embed:", err));
-                    }
-                }
-
-            } catch (error) {
-                console.error(`Fehler beim Verarbeiten der Spam-Erkennung für Nachricht ${message.id}:`, error);
-            }
-        }
+        */
     },
 };

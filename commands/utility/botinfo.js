@@ -9,7 +9,7 @@ module.exports = {
         .setName('botinfo')
         .setDescription('Zeigt detaillierte Informationen über den Bot an'),
 
-    category: 'Utility', // <-- NEU: Füge diese Zeile hinzu
+    category: 'Utility',
 
     async execute(interaction) {
         try {
