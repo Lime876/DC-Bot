@@ -1,8 +1,7 @@
-// utils/logUtils.js
-const { EmbedBuilder } = require('discord.js');
-const { getGuildConfig } = require('./configUtils');
-const { getTranslatedText } = require('./languageUtils');
-const logger = require('./logger'); // Importiere den neuen Logger
+import { EmbedBuilder } from 'discord.js';
+import { getGuildConfig } from './configUtils.js';
+import { getTranslatedText } from './languageUtils.js';
+import logger from './logger.js';
 
 /**
  * Sendet eine Log-Nachricht an den konfigurierten Log-Kanal der Gilde.
@@ -15,9 +14,8 @@ const logger = require('./logger'); // Importiere den neuen Logger
  * @param {string} [logData.color='Blue'] - Optionale Farbe für das Embed.
  * @param {string} [logData.thumbnailUrl=null] - Optionale Thumbnail-URL.
  */
-async function logEvent(guildId, logType, logData) {
+export async function logEvent(guildId, logType, logData) {
     try {
-        // Stelle sicher, dass der Client global verfügbar ist
         if (!global.client) {
             logger.error('[LogUtils] Discord Client ist nicht global verfügbar. Kann keine Logs senden.');
             return;
@@ -26,10 +24,7 @@ async function logEvent(guildId, logType, logData) {
         const guildConfig = await getGuildConfig(guildId);
         const logChannelId = guildConfig.logChannels?.[logType];
 
-        if (!logChannelId) {
-            // logger.debug(`[LogUtils] Kein Log-Kanal für Typ '${logType}' in Gilde ${guildId} konfiguriert.`);
-            return;
-        }
+        if (!logChannelId) return;
 
         const guild = await global.client.guilds.fetch(guildId);
         const logChannel = await guild.channels.fetch(logChannelId);
@@ -45,13 +40,8 @@ async function logEvent(guildId, logType, logData) {
             .setColor(logData.color || 'Blue')
             .setTimestamp();
 
-        if (logData.thumbnailUrl) {
-            embed.setThumbnail(logData.thumbnailUrl);
-        }
-
-        if (logData.fields && logData.fields.length > 0) {
-            embed.addFields(logData.fields);
-        }
+        if (logData.thumbnailUrl) embed.setThumbnail(logData.thumbnailUrl);
+        if (logData.fields && logData.fields.length > 0) embed.addFields(logData.fields);
 
         logger.debug(`[LogUtils] Versuche Embed an Log-Kanal ${logChannel.id} zu senden.`);
         await logChannel.send({ embeds: [embed] });
@@ -61,7 +51,3 @@ async function logEvent(guildId, logType, logData) {
         logger.error(`[LogUtils] Fehler beim Senden des Log-Events für Gilde ${guildId}, Typ ${logType}:`, error);
     }
 }
-
-module.exports = {
-    logEvent
-};

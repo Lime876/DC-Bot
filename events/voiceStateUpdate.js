@@ -1,27 +1,27 @@
 // events/voiceStateUpdate.js
-const { Events, EmbedBuilder, ChannelType, PermissionFlagsBits, TextChannel, AuditLogEvent } = require('discord.js');
-const { getLogChannelId } = require('../utils/config.js');
-const { getGuildLanguage, getTranslatedText } = require('../utils/languageUtils');
-const { getJTCConfigForGuild } = require('../utils/jtcConfig');
-const { activeJTCChannels } = require('../utils/sharedState'); // Importiere activeJTCChannels
-const logger = require('../utils/logger'); // Importiere den Logger
+import { Events, EmbedBuilder, ChannelType, PermissionFlagsBits, TextChannel, AuditLogEvent } from 'discord.js';
+import { getLogChannelId } from '../utils/config.js';
+import { getGuildLanguage, getTranslatedText } from '../utils/languageUtils.js';
+import { getJTCConfigForGuild } from '../utils/jtcConfig.js';
+import { activeJTCChannels } from '../utils/sharedState.js'; // Import activeJTCChannels
+import logger from '../utils/logger.js'; // Import the logger
 
 const creatingChannelForUser = new Set();
 const COOLDOWN_MS = 2000;
 
-// Hilfsfunktion zum Senden von Logs
+// Helper function to send logs
 async function sendVoiceLog(guild, logType, user, channel, oldChannel = null, moderator = null) {
     const lang = await getGuildLanguage(guild.id);
     const logChannelId = getLogChannelId(guild.id, logType);
 
     if (!logChannelId) {
-        // logger.debug(`[VoiceStateUpdate Event] Kein Log-Kanal für '${logType}' in Gilde ${guild.id} konfiguriert. (PID: ${process.pid})`);
+        // logger.debug(`[VoiceStateUpdate Event] No log channel configured for '${logType}' in guild ${guild.id}. (PID: ${process.pid})`);
         return;
     }
 
     const logChannel = guild.channels.cache.get(logChannelId);
     if (!logChannel || !logChannel.isTextBased()) {
-        logger.warn(`[VoiceStateUpdate Event] Konfigurierter Log-Kanal ${logChannelId} für Gilde ${guild.id} ist ungültig oder kein Textkanal. (PID: ${process.pid})`);
+        logger.warn(`[VoiceStateUpdate Event] Configured log channel ${logChannelId} for guild ${guild.id} is invalid or not a text channel. (PID: ${process.pid})`);
         return;
     }
 
@@ -34,57 +34,57 @@ async function sendVoiceLog(guild, logType, user, channel, oldChannel = null, mo
         case 'voice_join':
             authorText = getTranslatedText(lang, 'voice_state_update.JOIN_AUTHOR_TEXT', { userTag: user.tag });
             description = getTranslatedText(lang, 'voice_state_update.JOIN_DESCRIPTION', { userTag: user.tag, channelName: channel.name });
-            color = 0x57F287; // Grün
+            color = 0x57F287; // Green
             break;
         case 'voice_leave':
             authorText = getTranslatedText(lang, 'voice_state_update.LEAVE_AUTHOR_TEXT', { userTag: user.tag });
             description = getTranslatedText(lang, 'voice_state_update.LEAVE_DESCRIPTION', { userTag: user.tag, channelName: channel.name });
-            color = 0xED4245; // Rot
+            color = 0xED4245; // Red
             break;
         case 'voice_move':
             authorText = getTranslatedText(lang, 'voice_state_update.MOVE_AUTHOR_TEXT', { userTag: user.tag });
             description = getTranslatedText(lang, 'voice_state_update.MOVE_DESCRIPTION', { userTag: user.tag, oldChannelName: oldChannel.name, newChannelName: channel.name });
-            color = 0xFEE75C; // Gelb
+            color = 0xFEE75C; // Yellow
             break;
         case 'voice_mute_self':
             authorText = getTranslatedText(lang, 'voice_state_update.MUTE_SELF_TITLE');
             description = getTranslatedText(lang, 'voice_state_update.MUTE_SELF_DESCRIPTION', { userTag: user.tag, channelName: channel.name });
-            color = 0x5865F2; // Blau
+            color = 0x5865F2; // Blue
             break;
         case 'voice_unmute_self':
             authorText = getTranslatedText(lang, 'voice_state_update.UNMUTE_SELF_TITLE');
             description = getTranslatedText(lang, 'voice_state_update.UNMUTE_SELF_DESCRIPTION', { userTag: user.tag, channelName: channel.name });
-            color = 0x5865F2; // Blau
+            color = 0x5865F2; // Blue
             break;
         case 'voice_deafen_self':
             authorText = getTranslatedText(lang, 'voice_state_update.DEAFEN_SELF_TITLE');
             description = getTranslatedText(lang, 'voice_state_update.DEAFEN_SELF_DESCRIPTION', { userTag: user.tag, channelName: channel.name });
-            color = 0x5865F2; // Blau
+            color = 0x5865F2; // Blue
             break;
         case 'voice_undeafen_self':
             authorText = getTranslatedText(lang, 'voice_state_update.UNDEAFEN_SELF_TITLE');
             description = getTranslatedText(lang, 'voice_state_update.UNDEAFEN_SELF_DESCRIPTION', { userTag: user.tag, channelName: channel.name });
-            color = 0x5865F2; // Blau
+            color = 0x5865F2; // Blue
             break;
         case 'voice_mute_server':
             authorText = getTranslatedText(lang, 'voice_state_update.MUTE_SERVER_TITLE');
             description = getTranslatedText(lang, 'voice_state_update.MUTE_SERVER_DESCRIPTION', { userTag: user.tag, channelName: channel.name });
-            color = 0x992D22; // Dunkelrot
+            color = 0x992D22; // Dark Red
             break;
         case 'voice_unmute_server':
             authorText = getTranslatedText(lang, 'voice_state_update.UNMUTE_SERVER_TITLE');
             description = getTranslatedText(lang, 'voice_state_update.UNMUTE_SERVER_DESCRIPTION', { userTag: user.tag, channelName: channel.name });
-            color = 0x992D22; // Dunkelrot
+            color = 0x992D22; // Dark Red
             break;
         case 'voice_deafen_server':
             authorText = getTranslatedText(lang, 'voice_state_update.DEAFEN_SERVER_TITLE');
             description = getTranslatedText(lang, 'voice_state_update.DEAFEN_SERVER_DESCRIPTION', { userTag: user.tag, channelName: channel.name });
-            color = 0x992D22; // Dunkelrot
+            color = 0x992D22; // Dark Red
             break;
         case 'voice_undeafen_server':
             authorText = getTranslatedText(lang, 'voice_state_update.UNDEAFEN_SERVER_TITLE');
             description = getTranslatedText(lang, 'voice_state_update.UNDEAFEN_SERVER_DESCRIPTION', { userTag: user.tag, channelName: channel.name });
-            color = 0x992D22; // Dunkelrot
+            color = 0x992D22; // Dark Red
             break;
         case 'voice_stream_start':
             authorText = getTranslatedText(lang, 'voice_state_update.STREAM_START_TITLE');
@@ -94,20 +94,20 @@ async function sendVoiceLog(guild, logType, user, channel, oldChannel = null, mo
         case 'voice_stream_stop':
             authorText = getTranslatedText(lang, 'voice_state_update.STREAM_STOP_TITLE');
             description = getTranslatedText(lang, 'voice_state_update.STREAM_STOP_DESCRIPTION', { userTag: user.tag, channelName: channel.name });
-            color = 0x7289DA; // Grau-Blau
+            color = 0x7289DA; // Gray-Blue
             break;
         case 'voice_video_start':
             authorText = getTranslatedText(lang, 'voice_state_update.VIDEO_START_TITLE');
             description = getTranslatedText(lang, 'voice_state_update.VIDEO_START_DESCRIPTION', { userTag: user.tag, channelName: channel.name });
-            color = 0x206694; // Dunkelblau
+            color = 0x206694; // Dark Blue
             break;
         case 'voice_video_stop':
             authorText = getTranslatedText(lang, 'voice_state_update.VIDEO_STOP_TITLE');
             description = getTranslatedText(lang, 'voice_state_update.VIDEO_STOP_DESCRIPTION', { userTag: user.tag, channelName: channel.name });
-            color = 0x7289DA; // Grau-Blau
+            color = 0x7289DA; // Gray-Blue
             break;
         default:
-            return; // Unbekannter Log-Typ
+            return; // Unknown log type
     }
 
     embed = new EmbedBuilder()
@@ -121,7 +121,8 @@ async function sendVoiceLog(guild, logType, user, channel, oldChannel = null, mo
             { name: getTranslatedText(lang, 'voice_state_update.FIELD_USER'), value: `${user.tag} (<@${user.id}>)`, inline: true },
             { name: getTranslatedText(lang, 'voice_state_update.FIELD_CHANNEL'), value: `${channel.name} (<#${channel.id}>)`, inline: true }
         )
-        .setTimestamp();
+        .setTimestamp()
+        .setFooter({ text: getTranslatedText(lang, 'voice_state_update.FOOTER_USER_ID', { userId: user.id }) }); // Added localized footer
 
     if (logType.includes('server') && moderator) {
         embed.addFields(
@@ -137,37 +138,36 @@ async function sendVoiceLog(guild, logType, user, channel, oldChannel = null, mo
 
     try {
         await logChannel.send({ embeds: [embed] });
-        logger.info(`[VoiceStateUpdate Event] Log '${logType}' für Benutzer ${user.tag} in Gilde ${guild.name} gesendet. (PID: ${process.pid})`);
+        logger.info(`[VoiceStateUpdate Event] Log '${logType}' for user ${user.tag} in guild ${guild.name} sent. (PID: ${process.pid})`);
     } catch (error) {
-        logger.error(`[VoiceStateUpdate Event] Fehler beim Senden des '${logType}'-Logs für ${user.tag}:`, error);
+        logger.error(`[VoiceStateUpdate Event] Error sending '${logType}' log for ${user.tag} in guild ${guild.id}:`, error);
     }
 }
 
-
-module.exports = {
+export default {
     name: Events.VoiceStateUpdate,
     async execute(oldState, newState, client) {
         const user = newState.member?.user;
         const guild = newState.guild;
 
         if (!guild || !user || user.bot) {
-            return;
+            return; // Ignore bots and events outside of guilds
         }
 
         const lang = await getGuildLanguage(guild.id);
         const currentChannel = newState.channel;
         const oldChannel = oldState.channel;
 
-        // --- Kanal-Beitritt, -Verlassen, -Wechsel Logik ---
-        if (!oldChannel && currentChannel) { // Benutzer ist beigetreten
+        // --- Channel Join, Leave, Switch Logic ---
+        if (!oldChannel && currentChannel) { // User joined
             await sendVoiceLog(guild, 'voice_join', user, currentChannel);
-        } else if (oldChannel && !currentChannel) { // Benutzer hat verlassen
+        } else if (oldChannel && !currentChannel) { // User left
             await sendVoiceLog(guild, 'voice_leave', user, oldChannel);
-        } else if (oldChannel && currentChannel && oldChannel.id !== currentChannel.id) { // Benutzer hat gewechselt
+        } else if (oldChannel && currentChannel && oldChannel.id !== currentChannel.id) { // User switched
             await sendVoiceLog(guild, 'voice_move', user, currentChannel, oldChannel);
         }
 
-        // --- Mute/Deafen (Self) Logik ---
+        // --- Mute/Deafen (Self) Logic ---
         if (oldState.selfMute !== newState.selfMute) {
             if (newState.selfMute) {
                 await sendVoiceLog(guild, 'voice_mute_self', user, currentChannel || oldChannel);
@@ -183,18 +183,19 @@ module.exports = {
             }
         }
 
-        // --- Mute/Deafen (Server) Logik ---
-        // Versuche, den Moderator aus dem Audit-Log zu holen
+        // --- Mute/Deafen (Server) Logic ---
+        // Try to get the moderator from the audit log
         let moderator = null;
         try {
             const auditLogs = await guild.fetchAuditLogs({
-                type: AuditLogEvent.MemberUpdate, // Server Mute/Deafen ist MemberUpdate
+                type: AuditLogEvent.MemberUpdate, // Server Mute/Deafen is MemberUpdate
                 limit: 1,
             });
             const latestLog = auditLogs.entries.first();
 
+            // Check if the audit log entry is relevant (affects the user, is recent)
             if (latestLog && latestLog.target.id === user.id && Date.now() - latestLog.createdAt.getTime() < 5000) {
-                // Überprüfe, ob es sich um eine Mute/Deafen-Änderung handelt
+                // Check if it's a mute/deafen change
                 const changes = latestLog.changes;
                 const isMuteChange = changes.some(c => c.key === 'mute' && (c.old !== c.new));
                 const isDeafenChange = changes.some(c => c.key === 'deaf' && (c.old !== c.new));
@@ -204,7 +205,7 @@ module.exports = {
                 }
             }
         } catch (error) {
-            logger.error(`[VoiceStateUpdate Event] Fehler beim Abrufen des Audit-Logs für Server-Mute/Deafen für ${user.tag}:`, error);
+            logger.error(`[VoiceStateUpdate Event] Error fetching audit log for server mute/deafen for ${user.tag}:`, error);
         }
 
         if (oldState.serverMute !== newState.serverMute) {
@@ -222,7 +223,7 @@ module.exports = {
             }
         }
 
-        // --- Streaming und Video Logik ---
+        // --- Streaming and Video Logic ---
         if (oldState.streaming !== newState.streaming) {
             if (newState.streaming) {
                 await sendVoiceLog(guild, 'voice_stream_start', user, currentChannel || oldChannel);
@@ -239,22 +240,25 @@ module.exports = {
         }
 
 
-        // --- JTC (Join to Create) Logik (unverändert, aber in sendVoiceLog refactored) ---
+        // --- JTC (Join to Create) Logic ---
         const guildJTCConfig = getJTCConfigForGuild(guild.id);
 
-        if (!guildJTCConfig || !guildJTCConfig.channelId) {
+        if (!guildJTCConfig || !guildJTCConfig.channelId || !guildJTCConfig.categoryId) {
+            // JTC is not configured for this guild
             return;
         }
 
         const jtcChannelId = guildJTCConfig.channelId;
         const jtcCategoryId = guildJTCConfig.categoryId;
 
-        // Wenn ein Benutzer dem JTC-Kanal beitritt
+        // When a user joins the JTC channel
         if (newState.channelId === jtcChannelId && oldState.channelId !== jtcChannelId) {
+            // Prevent duplicate channel creation during cooldown
             if (creatingChannelForUser.has(user.id)) {
+                logger.debug(`[JTC] User ${user.tag} (${user.id}) is trying to create a JTC channel too quickly. Cooldown active.`);
                 return;
             }
-            creatingChannelForUser.add(user.id);
+            creatingChannelForUser.add(user.id); // Add user to the cooldown set
 
             const creationLogChannelId = getLogChannelId(guild.id, 'jtc_channel_create');
             let creationLogChannel = null;
@@ -262,11 +266,11 @@ module.exports = {
                 try {
                     creationLogChannel = await guild.channels.fetch(creationLogChannelId);
                     if (!(creationLogChannel instanceof TextChannel)) {
-                        logger.warn(`[JTC] JTC creation log channel (${creationLogChannelId}) is not a text channel.`);
+                        logger.warn(`[JTC] JTC creation log channel (${creationLogChannelId}) for guild ${guild.id} is not a text channel.`);
                         creationLogChannel = null;
                     }
                 } catch (e) {
-                    logger.error(`[JTC] Error fetching JTC creation log channel:`, e);
+                    logger.error(`[JTC] Error fetching JTC creation log channel ${creationLogChannelId} for guild ${guild.id}:`, e);
                     creationLogChannel = null;
                 }
             }
@@ -279,7 +283,7 @@ module.exports = {
                     parent: jtcCategoryId,
                     permissionOverwrites: [
                         {
-                            id: newState.member.id,
+                            id: newState.member.id, // The user creating the channel
                             allow: [
                                 PermissionFlagsBits.ManageChannels,
                                 PermissionFlagsBits.MoveMembers,
@@ -291,7 +295,7 @@ module.exports = {
                             ]
                         },
                         {
-                            id: guild.roles.everyone.id,
+                            id: guild.roles.everyone.id, // @everyone role
                             allow: [
                                 PermissionFlagsBits.ViewChannel,
                                 PermissionFlagsBits.Connect,
@@ -302,8 +306,8 @@ module.exports = {
                     ]
                 });
 
-                activeJTCChannels.add(newChannel.id);
-                await newState.member.voice.setChannel(newChannel);
+                activeJTCChannels.add(newChannel.id); // Add the new channel to the set of active JTC channels
+                await newState.member.voice.setChannel(newChannel); // Move the user to the new channel
 
                 if (creationLogChannel) {
                     const embed = new EmbedBuilder()
@@ -314,13 +318,15 @@ module.exports = {
                             channelId: newChannel.id,
                             creatorId: user.id
                         }))
-                        .setColor(0x57F287)
-                        .setTimestamp();
+                        .setColor(0x57F287) // Green
+                        .setTimestamp()
+                        .setFooter({ text: getTranslatedText(lang, 'jtc_event.FOOTER_CHANNEL_ID', { channelId: newChannel.id }) }); // Added localized footer
                     await creationLogChannel.send({ embeds: [embed] });
                 }
+                logger.info(`[JTC] JTC channel '${newChannel.name}' (${newChannel.id}) created for ${user.tag} in guild ${guild.name}. (PID: ${process.pid})`);
 
             } catch (error) {
-                logger.error(`[JTC ERROR] Failed to create/move channel for ${user.tag} in guild ${guild.name}:`, error);
+                logger.error(`[JTC ERROR] Error creating/moving channel for ${user.tag} in guild ${guild.name}:`, error);
                 if (creationLogChannel) {
                     const errorEmbed = new EmbedBuilder()
                         .setTitle(getTranslatedText(lang, 'jtc_event.CHANNEL_CREATION_FAILED_TITLE'))
@@ -328,23 +334,26 @@ module.exports = {
                             userTag: user.tag,
                             errorMessage: error.message
                         }))
-                        .setColor(0xFF0000)
+                        .setColor(0xFF0000) // Red
                         .setTimestamp();
                     await creationLogChannel.send({ embeds: [errorEmbed] });
                 }
             } finally {
+                // Remove user from the set after cooldown
                 setTimeout(() => {
                     creatingChannelForUser.delete(user.id);
                 }, COOLDOWN_MS);
             }
         }
-        // Wenn ein Benutzer einen Kanal verlässt und dieser leer wird, UND es ein vom BOT erstellter JTC-Kanal ist
+        // When a user leaves a channel and it becomes empty, AND it's a bot-created JTC channel
         else if (oldState.channelId && !newState.channelId && oldState.channel.type === ChannelType.GuildVoice) {
             const channel = oldState.channel;
 
+            // Give Discord some time to update members.size
             setTimeout(async () => {
                 const currentChannel = await guild.channels.fetch(channel.id).catch(() => null);
 
+                // Check if the channel still exists, is empty, and is an active JTC channel
                 if (currentChannel && currentChannel.members.size === 0 && activeJTCChannels.has(currentChannel.id)) {
                     const deletionLogChannelId = getLogChannelId(guild.id, 'jtc_channel_delete');
                     let deletionLogChannel = null;
@@ -352,18 +361,19 @@ module.exports = {
                         try {
                             deletionLogChannel = await guild.channels.fetch(deletionLogChannelId);
                             if (!(deletionLogChannel instanceof TextChannel)) {
-                                logger.warn(`[JTC] JTC deletion log channel (${deletionLogChannelId}) is not a text channel.`);
+                                logger.warn(`[JTC] JTC deletion log channel (${deletionLogChannelId}) for guild ${guild.id} is not a text channel.`);
                                 deletionLogChannel = null;
                             }
                         } catch (e) {
-                            logger.error(`[JTC] Error fetching JTC deletion log channel:`, e);
+                            logger.error(`[JTC] Error fetching JTC deletion log channel ${deletionLogChannelId} for guild ${guild.id}:`, e);
                             deletionLogChannel = null;
                         }
                     }
 
                     const botMember = guild.members.cache.get(client.user.id);
+                    // Check if the bot has permission to delete the channel
                     if (!botMember || !botMember.permissionsIn(currentChannel).has(PermissionFlagsBits.ManageChannels)) {
-                        logger.warn(`[JTC WARNING] Bot lacks ManageChannels permission for ${currentChannel.name}. Cannot delete.`);
+                        logger.warn(`[JTC WARNING] Bot lacks ManageChannels permission for JTC channel '${currentChannel.name}' (${currentChannel.id}). Cannot delete.`);
                         if (deletionLogChannel) {
                             const errorEmbed = new EmbedBuilder()
                                 .setTitle(getTranslatedText(lang, 'jtc_event.CHANNEL_DELETION_FAILED_TITLE'))
@@ -385,19 +395,20 @@ module.exports = {
                             limit: 1,
                         });
                         const latestLog = auditLogs.entries.first();
+                        // Check if the audit log entry is relevant (affects the channel, is recent)
                         if (latestLog &&
                             latestLog.target.id === currentChannel.id &&
                             Date.now() - latestLog.createdTimestamp < 5000) {
                             deleter = latestLog.executor;
                         }
                     } catch (error) {
-                        logger.error(`[JTC] Fehler beim Abrufen des Audit Logs für Kanal-Löschung:`, error);
+                        logger.error(`[JTC] Error fetching audit log for channel deletion of ${currentChannel.name} (${currentChannel.id}):`, error);
                     }
                     const deleterName = deleter ? (deleter.tag || deleter.username) : getTranslatedText(lang, 'general.UNKNOWN_USER');
                     const deleterId = deleter ? deleter.id : getTranslatedText(lang, 'general.UNKNOWN');
 
                     await currentChannel.delete(getTranslatedText(lang, 'jtc_event.channel_deleted_reason'));
-                    activeJTCChannels.delete(currentChannel.id); // Kanal-ID aus dem Set entfernen
+                    activeJTCChannels.delete(currentChannel.id); // Remove channel ID from the set
 
                     if (deletionLogChannel) {
                         const embed = new EmbedBuilder()
@@ -408,12 +419,14 @@ module.exports = {
                                 deleterName: deleterName,
                                 deleterId: deleterId
                             }))
-                            .setColor(0xFF0000)
-                            .setTimestamp();
+                            .setColor(0xFF0000) // Red
+                            .setTimestamp()
+                            .setFooter({ text: getTranslatedText(lang, 'jtc_event.FOOTER_CHANNEL_ID', { channelId: currentChannel.id }) }); // Added localized footer
                         await deletionLogChannel.send({ embeds: [embed] });
                     }
+                    logger.info(`[JTC] Empty JTC channel '${currentChannel.name}' (${currentChannel.id}) in guild ${guild.name} deleted. (PID: ${process.pid})`);
                 }
-            }, 1000);
+            }, 1000); // A short delay to ensure members.size has been updated
         }
-    },
+    }
 };

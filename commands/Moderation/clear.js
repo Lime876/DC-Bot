@@ -1,28 +1,39 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-const { getLogChannelId } = require('../../utils/config.js'); // Pfad angepasst
+// commands/moderation/clear.js — ESM-Version
+import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { getLogChannelId } from '../../utils/config.js';
+import { getGuildLanguage, getTranslatedText } from '../../utils/languageUtils.js';
+import logger from '../../utils/logger.js';
 
-module.exports = {
+export default {
   data: new SlashCommandBuilder()
     .setName('clear')
     .setDescription('Löscht mehrere Nachrichten im aktuellen Kanal')
-    .addIntegerOption(option =>
+    .setDescriptionLocalizations({
+      de: getTranslatedText('de', 'clear_command.DESCRIPTION'),
+      'en-US': getTranslatedText('en', 'clear_command.DESCRIPTION'),
+    })
+    .addIntegerOption((option) =>
       option
         .setName('amount')
         .setDescription('Anzahl der zu löschenden Nachrichten (max. 1000)')
-        .setRequired(true))
+        .setDescriptionLocalizations({
+          de: getTranslatedText('de', 'clear_command.AMOUNT_OPTION_DESCRIPTION'),
+          'en-US': getTranslatedText('en', 'clear_command.AMOUNT_OPTION_DESCRIPTION'),
+        })
+        .setRequired(true),
+    )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .setDMPermission(false),
 
-  category: 'Moderation', // <-- NEU: Füge diese Zeile hinzu
+  category: 'Moderation',
 
   async execute(interaction) {
+    const lang = await getGuildLanguage(interaction.guildId);
     const amount = interaction.options.getInteger('amount');
 
     if (amount < 1 || amount > 1000) {
       return interaction.reply({
-        content: '⚠️ Bitte gib eine Zahl zwischen 1 und 100 an.',
+        content: getTranslatedText(lang, 'clear_command.INVALID_AMOUNT'),
         ephemeral: true,
       });
     }
@@ -33,22 +44,33 @@ module.exports = {
 
       if (deleted.size === 0) {
         await interaction.editReply({
-          content: 'Es konnten keine Nachrichten gelöscht werden. Sind die Nachrichten älter als 14 Tage?',
-          ephemeral: true,
+          content: getTranslatedText(lang, 'clear_command.NO_MESSAGES_DELETED'),
         });
         return;
       }
 
       const embed = new EmbedBuilder()
-        .setColor(0x0099FF)
+        .setColor(0x0099ff)
         .setAuthor({
           name: interaction.user.tag,
           iconURL: interaction.user.displayAvatarURL(),
         })
-        .setDescription(`🧹 ${deleted.size} Nachrichten gelöscht`)
+        .setDescription(
+          getTranslatedText(lang, 'clear_command.EMBED_DESCRIPTION', {
+            deletedCount: deleted.size,
+          }),
+        )
         .addFields(
-          { name: 'Kanal:', value: `<#${interaction.channel.id}>`, inline: true },
-          { name: 'Anzahl:', value: String(deleted.size), inline: true },
+          {
+            name: getTranslatedText(lang, 'clear_command.FIELD_CHANNEL'),
+            value: `<#${interaction.channel.id}>`,
+            inline: true,
+          },
+          {
+            name: getTranslatedText(lang, 'clear_command.FIELD_AMOUNT'),
+            value: String(deleted.size),
+            inline: true,
+          },
         )
         .setTimestamp();
 
@@ -59,16 +81,21 @@ module.exports = {
           await logChannel.send({ embeds: [embed] });
         }
       }
-      await interaction.editReply({
-        content: `🧹 ${deleted.size} Nachrichten gelöscht.`,
-        ephemeral: true,
-      });
 
-    } catch (error) {
-      console.error('Fehler beim Löschen von Nachrichten:', error);
       await interaction.editReply({
-        content: `❌ Fehler beim Löschen von Nachrichten: ${error.message}`,
-        ephemeral: true,
+        content: getTranslatedText(lang, 'clear_command.SUCCESS_MESSAGE', {
+          deletedCount: deleted.size,
+        }),
+      });
+    } catch (error) {
+      logger.error(
+        `[Clear] Fehler beim Löschen von Nachrichten in Gilde ${interaction.guild.id}:`,
+        error,
+      );
+      await interaction.editReply({
+        content: getTranslatedText(lang, 'bot_messages.ERROR_OCCURRED_UNEXPECTED', {
+          errorMessage: error.message,
+        }),
       });
     }
   },

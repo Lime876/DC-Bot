@@ -1,58 +1,93 @@
-// commands/pay.js
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { loadEconomy, saveEconomy, getUserData } = require('../../utils/economyUtils');
+// commands/pay.js — ESM-Version
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { loadEconomy, saveEconomy, getUserData } from '../../utils/economyUtils.js';
+import { getGuildLanguage, getTranslatedText } from '../../utils/languageUtils.js';
+import logger from '../../utils/logger.js';
 
-module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('pay')
-        .setDescription('Überweise Münzen an einen anderen Benutzer.')
-        .addUserOption(option =>
-            option.setName('ziel_user')
-                .setDescription('Der Benutzer, an den du Münzen überweisen möchßen.')
-                .setRequired(true))
-        .addIntegerOption(option =>
-            option.setName('betrag')
-                .setDescription('Der zu überweisende Betrag.')
-                .setRequired(true)
-                .setMinValue(1)), // Mindestens 1 Münze
+export default {
+  data: new SlashCommandBuilder()
+    .setName('pay')
+    .setDescription('Überweise Münzen an einen anderen Benutzer.')
+    .setDescriptionLocalizations({
+      de: getTranslatedText('de', 'pay_command.DESCRIPTION'),
+      'en-US': getTranslatedText('en', 'pay_command.DESCRIPTION'),
+    })
+    .addUserOption(option =>
+      option
+        .setName('ziel_user')
+        .setDescription('Der Benutzer, an den du Münzen überweisen möchtest.')
+        .setDescriptionLocalizations({
+          de: getTranslatedText('de', 'pay_command.TARGET_USER_OPTION_DESCRIPTION'),
+          'en-US': getTranslatedText('en', 'pay_command.TARGET_USER_OPTION_DESCRIPTION'),
+        })
+        .setRequired(true),
+    )
+    .addIntegerOption(option =>
+      option
+        .setName('betrag')
+        .setDescription('Der zu überweisende Betrag.')
+        .setDescriptionLocalizations({
+          de: getTranslatedText('de', 'pay_command.AMOUNT_OPTION_DESCRIPTION'),
+          'en-US': getTranslatedText('en', 'pay_command.AMOUNT_OPTION_DESCRIPTION'),
+        })
+        .setRequired(true)
+        .setMinValue(1),
+    ),
 
-            category: 'Economy', // <-- NEU: Füge diese Zeile hinzu
+  category: 'Economy',
 
-    async execute(interaction) {
-        const sender = interaction.user;
-        const targetUser = interaction.options.getUser('ziel_user');
-        const amount = interaction.options.getInteger('betrag');
+  async execute(interaction) {
+    const lang = await getGuildLanguage(interaction.guildId);
 
-        if (sender.id === targetUser.id) {
-            return interaction.reply({ content: '❌ Du kannst dir selbst keine Münzen überweisen!', ephemeral: true });
-        }
-        if (targetUser.bot) {
-            return interaction.reply({ content: '❌ Du kannst keinem Bot Münzen überweisen!', ephemeral: true });
-        }
+    await interaction.deferReply({ ephemeral: true });
 
-        const economyData = loadEconomy();
-        const senderData = getUserData(sender.id, economyData);
-        const targetUserData = getUserData(targetUser.id, economyData);
+    const sender = interaction.user;
+    const targetUser = interaction.options.getUser('ziel_user');
+    const amount = interaction.options.getInteger('betrag');
 
-        if (senderData.balance < amount) {
-            return interaction.reply({ content: '❌ Du hast nicht genug Münzen, um diesen Betrag zu überweisen!', ephemeral: true });
-        }
+    if (sender.id === targetUser.id) {
+      return interaction.editReply({ content: getTranslatedText(lang, 'pay_command.CANNOT_PAY_SELF') });
+    }
+    if (targetUser.bot) {
+      return interaction.editReply({ content: getTranslatedText(lang, 'pay_command.CANNOT_PAY_BOT') });
+    }
 
-        senderData.balance -= amount;
-        targetUserData.balance += amount;
-        saveEconomy(economyData);
+    const economyData = loadEconomy();
+    const senderData = getUserData(sender.id, economyData);
+    const targetUserData = getUserData(targetUser.id, economyData);
 
-        const payEmbed = new EmbedBuilder()
-            .setColor(0x00FF00) // Grün für Erfolg
-            .setTitle('💸 Münzen überwiesen!')
-            .setDescription(`Du hast **${amount} Münzen** an **${targetUser.tag}** überwiesen.`)
-            .addFields(
-                { name: 'Dein neues Guthaben', value: `${senderData.balance} Münzen`, inline: true },
-                { name: 'Guthaben von Empfänger', value: `${targetUserData.balance} Münzen`, inline: true }
-            )
-            .setTimestamp()
-            .setFooter({ text: 'Wirtschaftssystem' });
+    if (senderData.balance < amount) {
+      return interaction.editReply({ content: getTranslatedText(lang, 'pay_command.NOT_ENOUGH_BALANCE') });
+    }
 
-        await interaction.reply({ embeds: [payEmbed], ephemeral: true });
-    },
+    senderData.balance -= amount;
+    targetUserData.balance += amount;
+    saveEconomy(economyData);
+
+    const payEmbed = new EmbedBuilder()
+      .setColor(0x00ff00)
+      .setTitle(getTranslatedText(lang, 'pay_command.EMBED_TITLE'))
+      .setDescription(
+        getTranslatedText(lang, 'pay_command.EMBED_DESCRIPTION', {
+          amount,
+          targetUserTag: targetUser.tag,
+        }),
+      )
+      .addFields(
+        {
+          name: getTranslatedText(lang, 'pay_command.FIELD_YOUR_NEW_BALANCE'),
+          value: getTranslatedText(lang, 'economy_system.CURRENCY_AMOUNT', { amount: senderData.balance }),
+          inline: true,
+        },
+        {
+          name: getTranslatedText(lang, 'pay_command.FIELD_RECEIVER_BALANCE'),
+          value: getTranslatedText(lang, 'economy_system.CURRENCY_AMOUNT', { amount: targetUserData.balance }),
+          inline: true,
+        },
+      )
+      .setTimestamp()
+      .setFooter({ text: getTranslatedText(lang, 'economy_system.FOOTER') });
+
+    await interaction.editReply({ embeds: [payEmbed] });
+  },
 };

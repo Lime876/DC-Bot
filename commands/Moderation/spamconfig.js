@@ -1,407 +1,220 @@
-// commands/Moderation/spamconfig.js
-const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
-const fs = require('node:fs/promises');
-const path = require('node:path');
-const { getTranslatedText, getGuildLanguage } = require('../../utils/languageUtils');
-const logger = require('../../utils/logger'); // Importiere den neuen Logger
+import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { getTranslatedText, getGuildLanguage } from '../../utils/languageUtils.js';
+import logger from '../../utils/logger.js';
 
-const SPAM_CONFIG_PATH = path.join(__dirname, '..', '..', 'data', 'spamConfig.json');
+const SPAM_CONFIG_PATH = path.resolve('./data/spamConfig.json');
+let spamConfigs = new Map();
 
-let spamConfigs = {};
-
-/**
- * Lädt die Spam-Konfigurationen aus der Datei.
- */
 async function loadSpamConfigs() {
     try {
         const data = await fs.readFile(SPAM_CONFIG_PATH, 'utf8');
-        spamConfigs = JSON.parse(data);
+        spamConfigs = new Map(Object.entries(JSON.parse(data)));
         logger.debug('[SpamConfig] Spam-Konfiguration geladen.');
     } catch (error) {
         if (error.code === 'ENOENT') {
-            logger.warn('[SpamConfig] spamConfig.json nicht gefunden, erstelle leere Konfiguration.');
-            spamConfigs = {};
-            await saveSpamConfigs(spamConfigs); // Speichere die leere Konfiguration
+            logger.warn('[SpamConfig] spamConfig.json nicht gefunden, erstelle neue Datei.');
+            spamConfigs = new Map();
+            await saveSpamConfigs();
         } else {
             logger.error('[SpamConfig] Fehler beim Laden der Spam-Konfiguration:', error);
+            spamConfigs = new Map();
         }
     }
 }
 
-/**
- * Speichert die Spam-Konfigurationen in die Datei.
- * @param {object} configs - Die zu speichernden Konfigurationen.
- */
-async function saveSpamConfigs(configs) {
+async function saveSpamConfigs(configs = spamConfigs) {
     try {
-        await fs.writeFile(SPAM_CONFIG_PATH, JSON.stringify(configs, null, 2), 'utf8');
-        spamConfigs = configs; // Aktualisiere den In-Memory-Cache
+        await fs.writeFile(SPAM_CONFIG_PATH, JSON.stringify(Object.fromEntries(configs), null, 2));
         logger.debug('[SpamConfig] Spam-Konfiguration gespeichert.');
     } catch (error) {
         logger.error('[SpamConfig] Fehler beim Speichern der Spam-Konfiguration:', error);
     }
 }
 
-// Initiales Laden der Konfigurationen beim Start
-loadSpamConfigs();
+// Lade die Konfigurationen beim Start des Bots
+await loadSpamConfigs();
 
-module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('spamconfig')
-        .setDescription('Manages the spam detection feature.')
-        .setDescriptionLocalizations({
-            de: getTranslatedText('de', 'spam_command.DESCRIPTION'),
-            'en-US': getTranslatedText('en', 'spam_command.DESCRIPTION')
-        })
-        .setDefaultMemberPermissions(0) // Nur für Admins
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('enable')
-                .setDescription('Enables spam detection for this server.')
-                .setDescriptionLocalizations({
-                    de: getTranslatedText('de', 'spam_command.ENABLE_SUBCOMMAND_DESCRIPTION'),
-                    'en-US': getTranslatedText('en', 'spam_command.ENABLE_SUBCOMMAND_DESCRIPTION')
-                }))
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('disable')
-                .setDescription('Disables spam detection for this server.')
-                .setDescriptionLocalizations({
-                    de: getTranslatedText('de', 'spam_command.DISABLE_SUBCOMMAND_DESCRIPTION'),
-                    'en-US': getTranslatedText('en', 'spam_command.DISABLE_SUBCOMMAND_DESCRIPTION')
-                }))
-        .addSubcommandGroup(group =>
-            group
-                .setName('link')
-                .setDescription('Manages blacklisted links for spam detection.')
-                .setDescriptionLocalizations({
-                    de: getTranslatedText('de', 'spam_command.LINK_GROUP_DESCRIPTION'),
-                    'en-US': getTranslatedText('en', 'spam_command.LINK_GROUP_DESCRIPTION')
-                })
-                .addSubcommand(subcommand =>
-                    subcommand
-                        .setName('add')
-                        .setDescription('Adds a link or domain to the blacklist.')
-                        .setDescriptionLocalizations({
-                            de: getTranslatedText('de', 'spam_command.LINK_ADD_SUBCOMMAND_DESCRIPTION'),
-                            'en-US': getTranslatedText('en', 'spam_command.LINK_ADD_SUBCOMMAND_DESCRIPTION')
-                        })
-                        .addStringOption(option =>
-                            option.setName('link')
-                                .setDescription('The full link or domain (e.g., "malicious.com" or "phishing.link/scam").')
-                                .setDescriptionLocalizations({
-                                    de: getTranslatedText('de', 'spam_command.LINK_OPTION_DESCRIPTION'),
-                                    'en-US': getTranslatedText('en', 'spam_command.LINK_OPTION_DESCRIPTION')
-                                })
-                                .setRequired(true)))
-                .addSubcommand(subcommand =>
-                    subcommand
-                        .setName('remove')
-                        .setDescription('Removes a link or domain from the blacklist.')
-                        .setDescriptionLocalizations({
-                            de: getTranslatedText('de', 'spam_command.LINK_REMOVE_SUBCOMMAND_DESCRIPTION'),
-                            'en-US': getTranslatedText('en', 'spam_command.LINK_REMOVE_SUBCOMMAND_DESCRIPTION')
-                        })
-                        .addStringOption(option =>
-                            option.setName('link')
-                                .setDescription('The link or domain to remove.')
-                                .setDescriptionLocalizations({
-                                    de: getTranslatedText('de', 'spam_command.LINK_OPTION_DESCRIPTION_REMOVE'),
-                                    'en-US': getTranslatedText('en', 'spam_command.LINK_OPTION_DESCRIPTION_REMOVE')
-                                })
-                                .setRequired(true)))
-                .addSubcommand(subcommand =>
-                    subcommand
-                        .setName('list')
-                        .setDescription('Displays all blacklisted links.')
-                        .setDescriptionLocalizations({
-                            de: getTranslatedText('de', 'spam_command.LINK_LIST_SUBCOMMAND_DESCRIPTION'),
-                            'en-US': getTranslatedText('en', 'spam_command.LINK_LIST_SUBCOMMAND_DESCRIPTION')
-                        })))
-        .addSubcommandGroup(group =>
-            group
-                .setName('raid')
-                .setDescription('Manages raid protection settings.')
-                .setDescriptionLocalizations({
-                    de: getTranslatedText('de', 'spam_command.RAID_GROUP_DESCRIPTION'),
-                    'en-US': getTranslatedText('en', 'spam_command.RAID_GROUP_DESCRIPTION')
-                })
-                .addSubcommand(subcommand =>
-                    subcommand
-                        .setName('enable')
-                        .setDescription('Enables raid protection.')
-                        .setDescriptionLocalizations({
-                            de: getTranslatedText('de', 'spam_command.RAID_ENABLE_SUBCOMMAND_DESCRIPTION'),
-                            'en-US': getTranslatedText('en', 'spam_command.RAID_ENABLE_SUBCOMMAND_DESCRIPTION')
-                        }))
-                .addSubcommand(subcommand =>
-                    subcommand
-                        .setName('disable')
-                        .setDescription('Disables raid protection.')
-                        .setDescriptionLocalizations({
-                            de: getTranslatedText('de', 'spam_command.RAID_DISABLE_SUBCOMMAND_DESCRIPTION'),
-                            'en-US': getTranslatedText('en', 'spam_command.RAID_DISABLE_SUBCOMMAND_DESCRIPTION')
-                        }))
-                .addSubcommand(subcommand =>
-                    subcommand
-                        .setName('set-thresholds')
-                        .setDescription('Sets the thresholds for raid detection.')
-                        .setDescriptionLocalizations({
-                            de: getTranslatedText('de', 'spam_command.RAID_SET_THRESHOLDS_SUBCOMMAND_DESCRIPTION'),
-                            'en-US': getTranslatedText('en', 'spam_command.RAID_SET_THRESHOLDS_SUBCOMMAND_DESCRIPTION')
-                        })
-                        .addIntegerOption(option =>
-                            option.setName('message-count')
-                                .setDescription('Number of similar messages to trigger detection.')
-                                .setDescriptionLocalizations({
-                                    de: getTranslatedText('de', 'spam_command.RAID_MESSAGE_COUNT_OPTION_DESCRIPTION'),
-                                    'en-US': getTranslatedText('en', 'spam_command.RAID_MESSAGE_COUNT_OPTION_DESCRIPTION')
-                                })
-                                .setRequired(true)
-                                .setMinValue(2))
-                        .addStringOption(option =>
-                            option.setName('time-period')
-                                .setDescription('Time period for messages (e.g., "15s", "1m", "5m").')
-                                .setDescriptionLocalizations({
-                                    de: getTranslatedText('de', 'spam_command.RAID_TIME_PERIOD_OPTION_DESCRIPTION'),
-                                    'en-US': getTranslatedText('en', 'spam_command.RAID_TIME_PERIOD_OPTION_DESCRIPTION')
-                                })
-                                .setRequired(true))
-                        .addIntegerOption(option =>
-                            option.setName('user-count')
-                                .setDescription('Number of unique users sending similar messages.')
-                                .setDescriptionLocalizations({
-                                    de: getTranslatedText('de', 'spam_command.RAID_USER_COUNT_OPTION_DESCRIPTION'),
-                                    'en-US': getTranslatedText('en', 'spam_command.RAID_USER_COUNT_OPTION_DESCRIPTION')
-                                })
-                                .setRequired(true)
-                                .setMinValue(2)))
-                .addSubcommand(subcommand =>
-                    subcommand
-                        .setName('status')
-                        .setDescription('Displays current raid protection settings.')
-                        .setDescriptionLocalizations({
-                            de: getTranslatedText('de', 'spam_command.RAID_STATUS_SUBCOMMAND_DESCRIPTION'),
-                            'en-US': getTranslatedText('en', 'spam_command.RAID_STATUS_SUBCOMMAND_DESCRIPTION')
-                        })))
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('set-character-spam-threshold')
-                .setDescription('Sets the threshold for excessive repeating characters (0.0-1.0).')
-                .setDescriptionLocalizations({
-                    de: getTranslatedText('de', 'spam_command.SET_CHARACTER_SPAM_THRESHOLD_SUBCOMMAND_DESCRIPTION'),
-                    'en-US': getTranslatedText('en', 'spam_command.SET_CHARACTER_SPAM_THRESHOLD_SUBCOMMAND_DESCRIPTION')
-                })
-                .addNumberOption(option =>
-                    option.setName('threshold')
-                        .setDescription('Ratio of repeating characters (e.g., 0.7 for 70%).')
-                        .setDescriptionLocalizations({
-                            de: getTranslatedText('de', 'spam_command.CHARACTER_SPAM_THRESHOLD_OPTION_DESCRIPTION'),
-                            'en-US': getTranslatedText('en', 'spam_command.CHARACTER_SPAM_THRESHOLD_OPTION_DESCRIPTION')
-                        })
-                        .setRequired(true)
-                        .setMinValue(0.0)
-                        .setMaxValue(1.0)))
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('set-max-emotes')
-                .setDescription('Sets the maximum number of emotes allowed per message (0 for unlimited).')
-                .setDescriptionLocalizations({
-                    de: getTranslatedText('de', 'spam_command.SET_MAX_EMOTES_SUBCOMMAND_DESCRIPTION'),
-                    'en-US': getTranslatedText('en', 'spam_command.SET_MAX_EMOTES_SUBCOMMAND_DESCRIPTION')
-                })
-                .addIntegerOption(option =>
-                    option.setName('count')
-                        .setDescription('Maximum number of emotes (e.g., 5). Set to 0 for unlimited.')
-                        .setDescriptionLocalizations({
-                            de: getTranslatedText('de', 'spam_command.MAX_EMOTES_OPTION_DESCRIPTION'),
-                            'en-US': getTranslatedText('en', 'spam_command.MAX_EMOTES_OPTION_DESCRIPTION')
-                        })
-                        .setRequired(true)
-                        .setMinValue(0)))
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('set-max-stickers')
-                .setDescription('Sets the maximum number of stickers allowed per message (0 for unlimited).')
-                .setDescriptionLocalizations({
-                    de: getTranslatedText('de', 'spam_command.SET_MAX_STICKERS_SUBCOMMAND_DESCRIPTION'),
-                    'en-US': getTranslatedText('en', 'spam_command.SET_MAX_STICKERS_SUBCOMMAND_DESCRIPTION')
-                })
-                .addIntegerOption(option =>
-                    option.setName('count')
-                        .setDescription('Maximum number of stickers (e.g., 1). Set to 0 for unlimited.')
-                        .setDescriptionLocalizations({
-                            de: getTranslatedText('de', 'spam_command.MAX_STICKERS_OPTION_DESCRIPTION'),
-                            'en-US': getTranslatedText('en', 'spam_command.MAX_STICKERS_OPTION_DESCRIPTION')
-                        })
-                        .setRequired(true)
-                        .setMinValue(0))),
+// Vervollständige die SlashCommandBuilder-Kette mit den fehlenden Optionen
+const data = new SlashCommandBuilder()
+    .setName('spamconfig')
+    .setDescription('Konfiguriert die Anti-Spam-Einstellungen für den Server.')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addSubcommand(subcommand => subcommand.setName('enable').setDescription('Aktiviert den Anti-Spam-Schutz.'))
+    .addSubcommand(subcommand => subcommand.setName('disable').setDescription('Deaktiviert den Anti-Spam-Schutz.'))
+    .addSubcommandGroup(group =>
+        group
+        .setName('blacklist-link')
+        .setDescription('Verwaltet die Blacklist für Links.')
+        .addSubcommand(sub =>
+            sub.setName('add')
+            .setDescription('Fügt einen Link hinzu.')
+            .addStringOption(opt => opt.setName('link').setDescription('Der Link, der blockiert werden soll.').setRequired(true))
+        )
+        .addSubcommand(sub =>
+            sub.setName('remove')
+            .setDescription('Entfernt einen Link.')
+            .addStringOption(opt => opt.setName('link').setDescription('Der Link, der entfernt werden soll.').setRequired(true))
+        )
+    )
+    .addSubcommand(sub =>
+        sub.setName('raid-protection')
+        .setDescription('Konfiguriert den Raid-Schutz.')
+        .addBooleanOption(opt => opt.setName('enabled').setDescription('Aktiviert oder deaktiviert den Schutz.').setRequired(true))
+    )
+    .addSubcommand(sub =>
+        sub.setName('set-char-threshold')
+        .setDescription('Setzt den Schwellenwert für Zeichen-Spam.')
+        .addNumberOption(opt => opt.setName('threshold').setDescription('Der Schwellenwert (0.0 bis 1.0).').setRequired(true))
+    )
+    .addSubcommand(sub =>
+        sub.setName('set-max-emotes')
+        .setDescription('Setzt die maximale Anzahl von Emotes.')
+        .addIntegerOption(opt => opt.setName('count').setDescription('Die maximale Anzahl von Emotes.').setRequired(true))
+    )
+    .addSubcommand(sub =>
+        sub.setName('set-max-stickers')
+        .setDescription('Setzt die maximale Anzahl von Stickern.')
+        .addIntegerOption(opt => opt.setName('count').setDescription('Die maximale Anzahl von Stickern.').setRequired(true))
+    );
 
-    category: 'Moderation',
+async function execute(interaction) {
+    await interaction.deferReply({
+        ephemeral: true
+    });
+    const guildId = interaction.guild.id;
+    const lang = await getGuildLanguage(guildId);
 
-    async execute(interaction) {
-        const guildId = interaction.guild.id;
-        const lang = await getGuildLanguage(guildId);
+    let config = spamConfigs.get(guildId) || {
+        enabled: false,
+        blacklistedLinks: [],
+        raidProtection: {
+            enabled: false
+        },
+        characterSpamThreshold: 0.7,
+        maxEmotes: 5,
+        maxStickers: 1,
+    };
+
+    try {
+        const subcommandGroup = interaction.options.getSubcommandGroup(false);
         const subcommand = interaction.options.getSubcommand();
-        const subcommandGroup = interaction.options.getSubcommandGroup();
 
-        let config = spamConfigs[guildId] || {
-            enabled: false,
-            blacklistedLinks: [],
-            raidProtection: { enabled: false, messageCount: 5, timePeriod: '1m', userCount: 3 },
-            characterSpamThreshold: 0.7,
-            maxEmotes: 5,
-            maxStickers: 1
-        };
-
-        switch (subcommandGroup) {
-            case 'link':
-                switch (subcommand) {
-                    case 'add': {
-                        const link = interaction.options.getString('link');
-                        if (config.blacklistedLinks.includes(link)) {
-                            return interaction.reply({ content: getTranslatedText(lang, 'spam_command.link_already_added', { link }), ephemeral: true });
-                        }
-                        config.blacklistedLinks.push(link);
-                        await saveSpamConfigs({ ...spamConfigs, [guildId]: config });
-                        return interaction.reply({ content: getTranslatedText(lang, 'spam_command.link_added_success', { link }), ephemeral: true });
-                    }
-                    case 'remove': {
-                        const link = interaction.options.getString('link');
-                        const index = config.blacklistedLinks.indexOf(link);
-                        if (index === -1) {
-                            return interaction.reply({ content: getTranslatedText(lang, 'spam_command.link_not_found', { link }), ephemeral: true });
-                        }
-                        config.blacklistedLinks.splice(index, 1);
-                        await saveSpamConfigs({ ...spamConfigs, [guildId]: config });
-                        return interaction.reply({ content: getTranslatedText(lang, 'spam_command.link_removed_success', { link }), ephemeral: true });
-                    }
-                    case 'list': {
-                        if (config.blacklistedLinks.length === 0) {
-                            return interaction.reply({ content: getTranslatedText(lang, 'spam_command.no_links_added'), ephemeral: true });
-                        }
-                        const linksList = config.blacklistedLinks.map(l => `- ${l}`).join('\n');
-                        return interaction.reply({ content: getTranslatedText(lang, 'spam_command.link_list', { links: linksList }), ephemeral: true });
-                    }
+        if (subcommandGroup === 'blacklist-link') {
+            const link = interaction.options.getString('link');
+            if (subcommand === 'add') {
+                if (config.blacklistedLinks.includes(link)) {
+                    return interaction.editReply({
+                        content: getTranslatedText(lang, 'spam_command.LINK_ALREADY_ADDED'),
+                        ephemeral: true
+                    });
                 }
-                break;
-            case 'raid':
-                switch (subcommand) {
-                    case 'enable': {
-                        if (config.raidProtection.enabled) {
-                            return interaction.reply({ content: getTranslatedText(lang, 'spam_command.RAID_ALREADY_ENABLED'), ephemeral: true });
-                        }
-                        config.raidProtection.enabled = true;
-                        await saveSpamConfigs({ ...spamConfigs, [guildId]: config });
-                        return interaction.reply({ content: getTranslatedText(lang, 'spam_command.RAID_ENABLED_SUCCESS'), ephemeral: true });
-                    }
-                    case 'disable': {
-                        if (!config.raidProtection.enabled) {
-                            return interaction.reply({ content: getTranslatedText(lang, 'spam_command.RAID_ALREADY_DISABLED'), ephemeral: true });
-                        }
-                        config.raidProtection.enabled = false;
-                        await saveSpamConfigs({ ...spamConfigs, [guildId]: config });
-                        return interaction.reply({ content: getTranslatedText(lang, 'spam_command.RAID_DISABLED_SUCCESS'), ephemeral: true });
-                    }
-                    case 'set-thresholds': {
-                        const messageCount = interaction.options.getInteger('message-count');
-                        const timePeriod = interaction.options.getString('time-period');
-                        const userCount = interaction.options.getInteger('user-count');
-
-                        // Einfache Validierung für timePeriod (z.B. "15s", "1m", "5m", "1h")
-                        const timeRegex = /^(\d+)(s|m|h)$/;
-                        const match = timePeriod.match(timeRegex);
-                        if (!match) {
-                            return interaction.reply({ content: getTranslatedText(lang, 'spam_command.RAID_INVALID_TIME_PERIOD'), ephemeral: true });
-                        }
-                        const value = parseInt(match[1]);
-                        const unit = match[2];
-                        let totalSeconds = 0;
-                        if (unit === 's') totalSeconds = value;
-                        if (unit === 'm') totalSeconds = value * 60;
-                        if (unit === 'h') totalSeconds = value * 3600;
-
-                        if (totalSeconds > 3600) { // Max 1 hour
-                            return interaction.reply({ content: getTranslatedText(lang, 'spam_command.RAID_INVALID_TIME_PERIOD'), ephemeral: true });
-                        }
-
-                        config.raidProtection.messageCount = messageCount;
-                        config.raidProtection.timePeriod = timePeriod;
-                        config.raidProtection.userCount = userCount;
-                        await saveSpamConfigs({ ...spamConfigs, [guildId]: config });
-                        return interaction.reply({ content: getTranslatedText(lang, 'spam_command.RAID_THRESHOLDS_SET_SUCCESS', { messageCount, timePeriod, userCount }), ephemeral: true });
-                    }
-                    case 'status': {
-                        const embed = new EmbedBuilder()
-                            .setColor('Blue')
-                            .setTitle(getTranslatedText(lang, 'spam_command.RAID_STATUS_TITLE'))
-                            .setDescription(getTranslatedText(lang, 'spam_command.RAID_STATUS_DESCRIPTION', {
-                                status: config.raidProtection.enabled ? getTranslatedText(lang, 'spam_command.STATUS_ENABLED_TEXT') : getTranslatedText(lang, 'spam_command.STATUS_DISABLED_TEXT')
-                            }))
-                            .addFields(
-                                { name: getTranslatedText(lang, 'spam_command.RAID_FIELD_MESSAGE_COUNT'), value: config.raidProtection.messageCount.toString(), inline: true },
-                                { name: getTranslatedText(lang, 'spam_command.RAID_FIELD_TIME_PERIOD'), value: config.raidProtection.timePeriod, inline: true },
-                                { name: getTranslatedText(lang, 'spam_command.RAID_FIELD_USER_COUNT'), value: config.raidProtection.userCount.toString(), inline: true }
-                            );
-                        return interaction.reply({ embeds: [embed], ephemeral: true });
-                    }
+                config.blacklistedLinks.push(link);
+            } else if (subcommand === 'remove') {
+                if (!config.blacklistedLinks.includes(link)) {
+                    return interaction.editReply({
+                        content: getTranslatedText(lang, 'spam_command.LINK_NOT_FOUND'),
+                        ephemeral: true
+                    });
                 }
-                break;
-            case undefined: // Hauptbefehle
-                switch (subcommand) {
-                    case 'enable': {
-                        if (config.enabled) {
-                            return interaction.reply({ content: getTranslatedText(lang, 'spam_command.already_enabled'), ephemeral: true });
-                        }
-                        config.enabled = true;
-                        await saveSpamConfigs({ ...spamConfigs, [guildId]: config });
-                        return interaction.reply({ content: getTranslatedText(lang, 'spam_command.enabled_success'), ephemeral: true });
-                    }
-                    case 'disable': {
-                        if (!config.enabled) {
-                            return interaction.reply({ content: getTranslatedText(lang, 'spam_command.already_disabled'), ephemeral: true });
-                        }
-                        config.enabled = false;
-                        await saveSpamConfigs({ ...spamConfigs, [guildId]: config });
-                        return interaction.reply({ content: getTranslatedText(lang, 'spam_command.disabled_success'), ephemeral: true });
-                    }
-                    case 'set-character-spam-threshold': {
-                        const threshold = interaction.options.getNumber('threshold');
-                        config.characterSpamThreshold = threshold;
-                        await saveSpamConfigs({ ...spamConfigs, [guildId]: config });
-                        return interaction.reply({ content: getTranslatedText(lang, 'spam_command.CHARACTER_SPAM_THRESHOLD_SET_SUCCESS', { threshold: (threshold * 100).toFixed(0) }), ephemeral: true });
-                    }
-                    case 'set-max-emotes': {
-                        const count = interaction.options.getInteger('count');
-                        config.maxEmotes = count;
-                        await saveSpamConfigs({ ...spamConfigs, [guildId]: config });
-                        return interaction.reply({ content: getTranslatedText(lang, 'spam_command.MAX_EMOTES_SET_SUCCESS', { count }), ephemeral: true });
-                    }
-                    case 'set-max-stickers': {
-                        const count = interaction.options.getInteger('count');
-                        config.maxStickers = count;
-                        await saveSpamConfigs({ ...spamConfigs, [guildId]: config });
-                        return interaction.reply({ content: getTranslatedText(lang, 'spam_command.MAX_STICKERS_SET_SUCCESS', { count }), ephemeral: true });
-                    }
+                config.blacklistedLinks = config.blacklistedLinks.filter(l => l !== link);
+            }
+            spamConfigs.set(guildId, config);
+            await saveSpamConfigs();
+            return interaction.editReply({
+                content: getTranslatedText(lang, `spam_command.LINK_${subcommand.toUpperCase()}_SUCCESS`),
+                ephemeral: true
+            });
+        }
+
+        switch (subcommand) {
+            case 'enable':
+            case 'disable':
+                config.enabled = subcommand === 'enable';
+                spamConfigs.set(guildId, config);
+                await saveSpamConfigs();
+                return interaction.editReply({
+                    content: getTranslatedText(lang, subcommand === 'enable' ? 'spam_command.ENABLED_SUCCESS' : 'spam_command.DISABLED_SUCCESS'),
+                    ephemeral: true
+                });
+
+            case 'raid-protection':
+                // Logik für Raid Protection
+                config.raidProtection.enabled = interaction.options.getBoolean('enabled');
+                spamConfigs.set(guildId, config);
+                await saveSpamConfigs();
+                return interaction.editReply({
+                    content: getTranslatedText(lang, config.raidProtection.enabled ? 'spam_command.RAID_PROTECTION_ENABLED' : 'spam_command.RAID_PROTECTION_DISABLED'),
+                    ephemeral: true
+                });
+
+            case 'set-char-threshold':
+                // Logik für Zeichen-Spam
+                const threshold = interaction.options.getNumber('threshold');
+                if (threshold < 0 || threshold > 1) {
+                    return interaction.editReply({
+                        content: getTranslatedText(lang, 'spam_command.INVALID_THRESHOLD'),
+                        ephemeral: true
+                    });
                 }
-                break;
+                config.characterSpamThreshold = threshold;
+                spamConfigs.set(guildId, config);
+                await saveSpamConfigs();
+                return interaction.editReply({
+                    content: getTranslatedText(lang, 'spam_command.CHAR_THRESHOLD_SET_SUCCESS'),
+                    ephemeral: true
+                });
+
+            case 'set-max-emotes':
+                // Logik für Emote-Spam
+                config.maxEmotes = interaction.options.getInteger('count');
+                spamConfigs.set(guildId, config);
+                await saveSpamConfigs();
+                return interaction.editReply({
+                    content: getTranslatedText(lang, 'spam_command.MAX_EMOTES_SET_SUCCESS'),
+                    ephemeral: true
+                });
+
+            case 'set-max-stickers':
+                // Logik für Sticker-Spam
+                config.maxStickers = interaction.options.getInteger('count');
+                spamConfigs.set(guildId, config);
+                await saveSpamConfigs();
+                return interaction.editReply({
+                    content: getTranslatedText(lang, 'spam_command.MAX_STICKERS_SET_SUCCESS'),
+                    ephemeral: true
+                });
+
             default:
-                await interaction.reply({ content: getTranslatedText(lang, 'bot_messages.ERROR_OCCURRED'), ephemeral: true });
-                break;
+                return interaction.editReply({
+                    content: getTranslatedText(lang, 'bot_messages.ERROR_OCCURRED'),
+                    ephemeral: true
+                });
         }
-    },
-    getSpamConfig: (guildId) => {
-        // Lade Konfigurationen, falls noch nicht geschehen (z.B. wenn Bot gerade gestartet wurde)
-        if (Object.keys(spamConfigs).length === 0) {
-            loadSpamConfigs(); // Starte den Ladevorgang, aber blockiere nicht
-        }
-        return spamConfigs[guildId] || {
-            enabled: false,
-            blacklistedLinks: [],
-            raidProtection: { enabled: false, messageCount: 5, timePeriod: '1m', userCount: 3 },
-            characterSpamThreshold: 0.7,
-            maxEmotes: 5,
-            maxStickers: 1
-        };
+    } catch (error) {
+        logger.error(`[SpamConfig] Fehler bei Ausführung in Gilde ${guildId}:`, error);
+        return interaction.editReply({
+            content: getTranslatedText(lang, 'bot_messages.ERROR_OCCURRED'),
+            ephemeral: true
+        });
     }
-};
+}
+
+function getSpamConfig(guildId) {
+    return spamConfigs.get(guildId) || {
+        enabled: false,
+        blacklistedLinks: [],
+        raidProtection: {
+            enabled: false,
+            messageCount: 5,
+            timePeriod: '1m',
+            userCount: 3
+        },
+        characterSpamThreshold: 0.7,
+        maxEmotes: 5,
+        maxStickers: 1,
+    };
+}
+
+export { data, execute, getSpamConfig };

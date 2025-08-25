@@ -1,51 +1,82 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+import { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } from 'discord.js';
+import { getGuildLanguage, getTranslatedText } from '../../utils/languageUtils.js';
+import logger from '../../utils/logger.js';
 
-module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('untimeout')
-    .setDescription('Hebt den Timeout eines Mitglieds auf')
-    .addUserOption(option =>
-      option.setName('mitglied')
-        .setDescription('Das Mitglied, dessen Timeout aufgehoben werden soll')
-        .setRequired(true))
-    .addStringOption(option =>
-      option.setName('grund')
-        .setDescription('Grund für das Entfernen des Timeouts')
-        .setRequired(false))
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+export const data = new SlashCommandBuilder()
+    .setName('untimeout')
+    .setDescription('Hebt den Timeout eines Mitglieds auf')
+    .setDescriptionLocalizations({
+        de: getTranslatedText('de', 'untimeout_command.DESCRIPTION'),
+        'en-US': getTranslatedText('en', 'untimeout_command.DESCRIPTION'),
+    })
+    .addUserOption(option =>
+        option.setName('mitglied')
+            .setDescription('Das Mitglied, dessen Timeout aufgehoben werden soll')
+            .setDescriptionLocalizations({
+                de: getTranslatedText('de', 'untimeout_command.MEMBER_OPTION_DESCRIPTION'),
+                'en-US': getTranslatedText('en', 'untimeout_command.MEMBER_OPTION_DESCRIPTION'),
+            })
+            .setRequired(true))
+    .addStringOption(option =>
+        option.setName('grund')
+            .setDescription('Grund für das Entfernen des Timeouts')
+            .setDescriptionLocalizations({
+                de: getTranslatedText('de', 'untimeout_command.REASON_OPTION_DESCRIPTION'),
+                'en-US': getTranslatedText('en', 'untimeout_command.REASON_OPTION_DESCRIPTION'),
+            })
+            .setRequired(false))
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers);
 
-category: 'Moderation', // <-- NEU: Füge diese Zeile hinzu
+export const category = 'Moderation';
 
-  async execute(interaction) {
-    const member = interaction.options.getMember('mitglied');
-    const grund = interaction.options.getString('grund') || 'Kein Grund angegeben';
+export async function execute(interaction) {
+    await interaction.deferReply({ ephemeral: true });
 
-    if (!member) {
-      return interaction.reply({ content: '❌ Mitglied nicht gefunden oder nicht auf dem Server.', ephemeral: true });
-    }
+    const user = interaction.options.getUser('mitglied');
+    const lang = await getGuildLanguage(interaction.guild.id);
+    const grund = interaction.options.getString('grund') || getTranslatedText(lang, 'untimeout_command.NO_REASON_PROVIDED');
+    const member = interaction.guild.members.cache.get(user.id);
 
-    try {
-      await member.timeout(null, grund);
+    if (!member) {
+        return interaction.editReply({ content: getTranslatedText(lang, 'untimeout_command.MEMBER_NOT_FOUND'), ephemeral: true });
+    }
 
-      const embed = new EmbedBuilder()
-        .setColor(0x00FFFF)
-        .setTitle('⏱️ Timeout aufgehoben')
-        .addFields(
-          { name: 'Mitglied', value: `${member.user.tag}`, inline: true },
-          { name: 'Von', value: `${interaction.user.tag}`, inline: true },
-          { name: 'Grund', value: grund }
-        )
-        .setTimestamp();
+    if (!member.communicationDisabledUntil) {
+        return interaction.editReply({
+            content: getTranslatedText(lang, 'untimeout_command.NOT_TIMED_OUT', { user: member.user.tag }),
+            ephemeral: true,
+        });
+    }
 
-      await interaction.reply({ embeds: [embed] });
+    if (!member.moderatable) {
+        return interaction.editReply({ content: getTranslatedText(lang, 'untimeout_command.CANNOT_UNTIMEOUT_USER'), ephemeral: true });
+    }
 
-      // Optional: Logging
-      const logChannelId = process.env.LOG_CHANNEL_ID;
-      const logChannel = interaction.guild.channels.cache.get(logChannelId);
-      if (logChannel) logChannel.send({ embeds: [embed] }).catch(console.error);
-    } catch (error) {
-      console.error(error);
-      interaction.reply({ content: '❌ Fehler beim Entfernen des Timeouts.', ephemeral: true });
-    }
-  }
-};
+    try {
+        await member.timeout(null, grund);
+
+        const embed = new EmbedBuilder()
+            .setColor(0x00FFFF)
+            .setTitle(getTranslatedText(lang, 'untimeout_command.EMBED_TITLE'))
+            .addFields(
+                { name: getTranslatedText(lang, 'untimeout_command.EMBED_FIELD_MEMBER'), value: `${member.user.tag} (\`${member.user.id}\`)`, inline: true },
+                { name: getTranslatedText(lang, 'untimeout_command.EMBED_FIELD_REASON'), value: grund, inline: false }
+            )
+            .setTimestamp()
+            .setFooter({ text: interaction.guild.name, iconURL: interaction.guild.iconURL() });
+
+        await interaction.editReply({ embeds: [embed] });
+        logger.info(`[Untimeout Command] Timeout von Mitglied ${member.user.tag} (${member.user.id}) in Gilde ${interaction.guild.name} (${interaction.guild.id}) aufgehoben. Grund: ${grund}. (PID: ${process.pid})`);
+
+    } catch (error) {
+        logger.error(`[Untimeout Command] Fehler beim Aufheben des Timeouts von Mitglied ${member.user.id} in Gilde ${interaction.guild.id}:`, error);
+
+        if (error.code === 50013) {
+            await interaction.editReply({ content: getTranslatedText(lang, 'untimeout_command.ERROR_PERMISSION_DENIED'), ephemeral: true });
+        } else if (error.code === 10007) {
+            await interaction.editReply({ content: getTranslatedText(lang, 'untimeout_command.ERROR_MEMBER_NOT_FOUND_API'), ephemeral: true });
+        } else {
+            await interaction.editReply({ content: getTranslatedText(lang, 'bot_messages.ERROR_OCCURRED'), ephemeral: true });
+        }
+    }
+}

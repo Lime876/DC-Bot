@@ -1,39 +1,55 @@
-// commands/admin/language.js
-const { SlashCommandBuilder, PermissionsBitField, MessageFlags } = require('discord.js'); // MessageFlags hinzugefügt
-const { getGuildLanguage, setGuildLanguage, getTranslatedText } = require('../../utils/languageUtils');
-const path = require('path');
-const fs = require('fs');
+// commands/admin/language.js — ESM-Version
+import { SlashCommandBuilder, PermissionsBitField } from 'discord.js';
+import { getGuildLanguage, setGuildLanguage, getTranslatedText } from '../../utils/languageUtils.js';
 
-// Pfad zur Datei, in der die Gilden-Sprachen gespeichert werden
-const guildLanguagesPath = path.join(__dirname, '../../data/guildLanguages.json');
+export default {
+  data: new SlashCommandBuilder()
+    .setName('language')
+    .setDescription('Setzt die Bot-Sprache für diesen Server.')
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
+    .addStringOption(option =>
+      option
+        .setName('lang')
+        .setDescription('Sprache wählen (z.B. en, de)')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Deutsch', value: 'de' },
+          { name: 'English', value: 'en' }
+        ),
+    ),
 
-module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('language')
-        .setDescription('Sets the bot language for this server.')
-        .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild) // Erfordert ManageGuild Berechtigung
-        .addStringOption(option =>
-            option.setName('lang')
-                .setDescription('The language to set (e.g., en, de)')
-                .setRequired(true)
-                .addChoices(
-                    { name: 'Deutsch', value: 'de' },
-                    { name: 'English', value: 'en' }
-                )),
-    
-    async execute(interaction) {
-        const selectedLang = interaction.options.getString('lang');
-        const guildId = interaction.guild.id;
-        const currentLang = getGuildLanguage(guildId); // Holt die aktuelle Sprache, falls die neue ungültig ist
+  category: 'Admin',
 
-        // Versucht, die Sprache zu setzen
-        if (setGuildLanguage(guildId, selectedLang)) {
-            const successMessage = getTranslatedText(selectedLang, 'language_command.SUCCESS_MESSAGE', { lang: selectedLang });
-            await interaction.reply({ content: successMessage, flags: [MessageFlags.Ephemeral] }); // Verwendung von flags
-        } else {
-            const errorMessage = getTranslatedText(currentLang, 'language_command.INVALID_LANGUAGE', { lang: selectedLang });
-            await interaction.reply({ content: errorMessage, flags: [MessageFlags.Ephemeral] }); // Verwendung von flags
-        }
-    },
+  async execute(interaction) {
+    const selectedLang = interaction.options.getString('lang');
+    const guildId = interaction.guild.id;
+    const currentLang = getGuildLanguage(guildId);
+
+    // Falls Sprache bereits gesetzt ist
+    if (selectedLang === currentLang) {
+      const alreadySetMsg = getTranslatedText(
+        selectedLang,
+        'language_command.ALREADY_SET',
+        { lang: selectedLang }
+      );
+      return interaction.reply({ content: alreadySetMsg, ephemeral: true });
+    }
+
+    // Sprache setzen und Feedback geben
+    if (setGuildLanguage(guildId, selectedLang)) {
+      const successMessage = getTranslatedText(
+        selectedLang,
+        'language_command.SUCCESS_MESSAGE',
+        { lang: selectedLang }
+      );
+      await interaction.reply({ content: successMessage, ephemeral: true });
+    } else {
+      const errorMessage = getTranslatedText(
+        currentLang,
+        'language_command.INVALID_LANGUAGE',
+        { lang: selectedLang }
+      );
+      await interaction.reply({ content: errorMessage, ephemeral: true });
+    }
+  },
 };
-    

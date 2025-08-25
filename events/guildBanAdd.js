@@ -1,68 +1,80 @@
-// events/guildBanAdd.js
-const { Events, EmbedBuilder, AuditLogEvent } = require('discord.js');
-const { getLogChannelId } = require('../utils/config.js');
-const { getGuildLanguage, getTranslatedText } = require('../utils/languageUtils');
-const logger = require('../utils/logger');
+import { Events, EmbedBuilder, AuditLogEvent } from 'discord.js';
+import { getLogChannelId } from '../utils/config.js';
+import { getGuildLanguage, getTranslatedText } from '../utils/languageUtils.js';
+import logger from '../utils/logger.js';
 
-module.exports = {
-    name: Events.GuildBanAdd,
-    async execute(ban) {
-        const guild = ban.guild;
-        const user = ban.user;
-        const lang = await getGuildLanguage(guild.id);
-        const logChannelId = getLogChannelId(guild.id, 'member_ban');
+function safeTag(user) {
+  return user?.tag ?? `@${user?.username ?? 'Unknown'}`;
+}
 
-        if (!logChannelId) {
-            // logger.debug(`[GuildBanAdd Event] Kein Log-Kanal für 'member_ban' in Gilde ${guild.id} konfiguriert. (PID: ${process.pid})`);
-            return;
+export default {
+  name: Events.GuildBanAdd,
+  async execute(ban) {
+    const guild = ban?.guild;
+    const user = ban?.user;
+    if (!guild || !user) return;
+
+    const lang = await getGuildLanguage(guild.id);
+    const logChannelId = getLogChannelId(guild.id, 'member_ban');
+    if (!logChannelId) return;
+
+    let logChannel = guild.channels.cache.get(logChannelId);
+    if (!logChannel) {
+      try {
+        logChannel = await guild.channels.fetch(logChannelId);
+      } catch {
+        // Kanal konnte nicht geholt werden
+      }
+    }
+
+    if (!logChannel || !logChannel.isTextBased()) {
+      logger.warn(`[GuildBanAdd] Log-Kanal ${logChannelId} für Gilde ${guild.id} ist ungültig oder kein Textkanal. (PID: ${process.pid})`);
+      return;
+    }
+
+    let moderator = getTranslatedText(lang, 'guild_ban_add.UNKNOWN_MODERATOR');
+    let reason = ban.reason ?? getTranslatedText(lang, 'guild_ban_add.NO_REASON_PROVIDED');
+
+    try {
+      const logs = await guild.fetchAuditLogs({
+        type: AuditLogEvent.MemberBanAdd,
+        limit: 10,
+      });
+
+      const entry = logs.entries
+        .filter(e => e.target?.id === user.id)
+        .sort((a, b) => (b.createdTimestamp ?? 0) - (a.createdTimestamp ?? 0))
+        .first();
+
+      if (entry?.executor) {
+        const recent = Date.now() - (entry.createdTimestamp ?? 0) < 10_000;
+        if (recent) {
+          const exec = entry.executor;
+          moderator = `${safeTag(exec)} (<@${exec.id}>)`;
+          if (entry.reason) reason = entry.reason;
         }
+      }
+    } catch (error) {
+      logger.error(`[GuildBanAdd] Fehler beim Abrufen des Audit-Logs für Bann von ${safeTag(user)} (${user.id}):`, error);
+    }
 
-        const logChannel = guild.channels.cache.get(logChannelId);
-        if (!logChannel || !logChannel.isTextBased()) {
-            logger.warn(`[GuildBanAdd Event] Konfigurierter Log-Kanal ${logChannelId} für Gilde ${guild.id} ist ungültig oder kein Textkanal. (PID: ${process.pid})`);
-            return;
-        }
+    const embed = new EmbedBuilder()
+      .setColor(0xFF4500)
+      .setTitle(getTranslatedText(lang, 'guild_ban_add.LOG_TITLE'))
+      .setDescription(getTranslatedText(lang, 'guild_ban_add.LOG_DESCRIPTION', { userTag: safeTag(user), userId: user.id }))
+      .setThumbnail(user.displayAvatarURL({ size: 256 }))
+      .addFields(
+        { name: getTranslatedText(lang, 'guild_ban_add.FIELD_REASON'), value: reason || '—', inline: false },
+        { name: getTranslatedText(lang, 'guild_ban_add.FIELD_MODERATOR'), value: moderator || '—', inline: false }
+      )
+      .setTimestamp()
+      .setFooter({ text: getTranslatedText(lang, 'guild_ban_add.FOOTER_USER_ID', { userId: user.id }) });
 
-        let moderator = getTranslatedText(lang, 'guild_ban_add.UNKNOWN_MODERATOR');
-        let reason = ban.reason || getTranslatedText(lang, 'guild_ban_add.NO_REASON_PROVIDED');
-
-        // Versuche, den Moderator und den Grund aus dem Audit-Log zu holen
-        try {
-            const auditLogs = await guild.fetchAuditLogs({
-                type: AuditLogEvent.MemberBanAdd,
-                limit: 1,
-            });
-            const latestBanLog = auditLogs.entries.first();
-
-            if (latestBanLog && latestBanLog.target.id === user.id && latestBanLog.executor) {
-                // Überprüfe den Zeitstempel, um sicherzustellen, dass es sich um den aktuellen Bann handelt
-                const timeDifference = Date.now() - latestBanLog.createdAt.getTime();
-                if (timeDifference < 5000) { // Wenn der Eintrag innerhalb der letzten 5 Sekunden erstellt wurde
-                    moderator = `${latestBanLog.executor.tag} (<@${latestBanLog.executor.id}>)`;
-                    reason = latestBanLog.reason || reason;
-                }
-            }
-        } catch (error) {
-            logger.error(`[GuildBanAdd Event] Fehler beim Abrufen des Audit-Logs für Bann von ${user.tag}:`, error);
-        }
-
-        const embed = new EmbedBuilder()
-            .setColor(0xFF4500) // Orange-Rot für Bann
-            .setTitle(getTranslatedText(lang, 'guild_ban_add.LOG_TITLE'))
-            .setDescription(getTranslatedText(lang, 'guild_ban_add.LOG_DESCRIPTION', { userTag: user.tag, userId: user.id }))
-            .setThumbnail(user.displayAvatarURL({ dynamic: true }))
-            .addFields(
-                { name: getTranslatedText(lang, 'guild_ban_add.FIELD_REASON'), value: reason, inline: false },
-                { name: getTranslatedText(lang, 'guild_ban_add.FIELD_MODERATOR'), value: moderator, inline: false }
-            )
-            .setTimestamp()
-            .setFooter({ text: `Benutzer ID: ${user.id}` });
-
-        try {
-            await logChannel.send({ embeds: [embed] });
-            logger.info(`[GuildBanAdd Event] Benutzer ${user.tag} in Gilde ${guild.name} gebannt. Moderator: ${moderator}, Grund: ${reason}. (PID: ${process.pid})`);
-        } catch (error) {
-            logger.error(`[GuildBanAdd Event] Fehler beim Senden des Bann-Logs für ${user.tag}:`, error);
-        }
-    },
+    try {
+      await logChannel.send({ embeds: [embed] });
+      logger.info(`[GuildBanAdd] Benutzer ${safeTag(user)} in Gilde ${guild.name} gebannt. Moderator: ${moderator}, Grund: ${reason}. (PID: ${process.pid})`);
+    } catch (error) {
+      logger.error(`[GuildBanAdd] Fehler beim Senden des Bann-Logs für ${safeTag(user)} (${user.id}):`, error);
+    }
+  },
 };

@@ -1,33 +1,40 @@
-// index.js
-require('dotenv').config(); // Dies lädt die Variablen aus deiner .env-Datei in process.env
+// index.js – ESM-Version
+import dotenv from 'dotenv';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+    Client,
+    Collection,
+    GatewayIntentBits,
+    Partials,
+    Events,
+} from 'discord.js';
+import { REST } from '@discordjs/rest';
+import { Routes } from 'discord-api-types/v10';
+import logger from './utils/logger.js';
+import { getAllSocialStats } from './commands/services/social/index.js';
+import { loadTranslations, loadGuildLanguages } from './utils/languageUtils.js';
 
-const fs = require('node:fs');
-const path = require('node:path');
-const { Client, Collection, GatewayIntentBits, Partials, PermissionsBitField, Events } = require('discord.js'); // Events importiert
-const { REST } = require('@discordjs/rest');
-const { Routes } = require('discord-api-types/v10');
-const logger = require('./utils/logger'); // Logger importiert
+// __dirname & __filename in ESM bereitstellen
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-logger.debug(`[DEBUG] index.js wird ausgeführt (PID: ${process.pid})`);
+dotenv.config();
 
-// DEKLARIERE DIE TOKEN-VARIABLE HIER, BEVOR SIE VERWENDET WIRD
-// Stelle sicher, dass der Name der Umgebungsvariablen (DISCORD_BOT_TOKEN)
-// mit dem in deiner .env-Datei ÜBEREINSTIMMT.
+logger.debug(`[DEBUG] index.js gestartet (PID: ${process.pid})`);
+
+// ENV-Check
+['DISCORD_BOT_TOKEN', 'DISCORD_CLIENT_ID'].forEach((key) => {
+    if (!process.env[key]) {
+        logger.error(`FEHLER: ${key} fehlt in der .env-Datei.`);
+        process.exit(1);
+    }
+});
+
 const token = process.env.DISCORD_BOT_TOKEN;
-const clientId = process.env.DISCORD_CLIENT_ID; // CLIENT_ID wird für das Deployment benötigt
-// Optional: Guild ID für Test-Server. Wenn gesetzt, werden Commands nur auf diesem Server deployed.
-// Wenn nicht gesetzt, werden Commands global deployed (kann bis zu 1 Stunde dauern).
-const guildId = process.env.DISCORD_GUILD_ID; 
-
-// Überprüfe, ob der Token und die Client ID geladen wurden, BEVOR du versuchst, dich anzumelden
-if (!token) {
-    logger.error('FEHLER: DISCORD_BOT_TOKEN ist in der .env-Datei nicht gefunden. Der Bot kann sich nicht anmelden.');
-    process.exit(1); // Beendet den Prozess, wenn der Token fehlt
-}
-if (!clientId) {
-    logger.error('FEHLER: DISCORD_CLIENT_ID ist in der .env-Datei nicht gefunden. Commands können nicht deployed werden.');
-    process.exit(1); // Beendet den Prozess, wenn die Client ID fehlt
-}
+const clientId = process.env.DISCORD_CLIENT_ID;
+const guildId = process.env.DISCORD_GUILD_ID;
 
 const client = new Client({
     intents: [
@@ -36,10 +43,10 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildModeration,
-        GatewayIntentBits.GuildVoiceStates, // Für JTC
-        GatewayIntentBits.GuildInvites, // Für Invite Tracker
-        GatewayIntentBits.GuildMessageReactions, // Für Polls/Voting
-        GatewayIntentBits.DirectMessages, // Für DMs, falls du sie loggen willst
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildInvites,
+        GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.DirectMessages,
     ],
     partials: [
         Partials.Message,
@@ -50,211 +57,189 @@ const client = new Client({
     ],
 });
 
-global.client = client;
-// NEU: Initialisiere global.invites als eine Collection, um Einladungen pro Gilde zu speichern
-global.invites = new Collection(); 
+// Exportiere die Client-Instanz, damit andere Module darauf zugreifen können
+export { client };
 
 client.commands = new Collection();
-const commandsPath = path.join(__dirname, 'commands');
+client.cooldowns = new Collection();
+client.activeEmbedSessions = new Collection(); // Initialisiere hier die Sammlung
 
-// Funktion zum Leeren des Modul-Caches
-function clearModuleCache() {
-    logger.debug('[DEBUG] Leere Node.js Modul-Cache...');
-    for (const id in require.cache) {
-        // Ignoriere node_modules, um nicht unnötig viel zu leeren
-        if (!id.includes('node_modules')) {
-            delete require.cache[id];
-        }
+global.invites = new Collection();
+
+// Commands rekursiv laden (mit dynamic import)
+import { pathToFileURL } from 'node:url';
+
+async function readCommands(dir) {
+    if (!fs.existsSync(dir)) {
+        logger.warn(`[Commands] Ordner fehlt, überspringe: ${dir}`);
+        return;
     }
-}
 
-// Rekursives Laden von Commands aus Unterordnern
-function readCommands(dir) {
-    const files = fs.readdirSync(dir, { withFileTypes: true });
-
-    for (const file of files) {
+    for (const file of fs.readdirSync(dir, {
+        withFileTypes: true
+    })) {
         const fullPath = path.join(dir, file.name);
         if (file.isDirectory()) {
-            readCommands(fullPath); // Wenn es ein Ordner ist, rekursiv durchsuchen
+            await readCommands(fullPath);
         } else if (file.isFile() && file.name.endsWith('.js')) {
+            if (file.name === 'index.js') {
+                logger.debug(`[Commands] Überspringe Hilfsdatei: ${fullPath}`);
+                continue;
+            }
+
             try {
-                // Cache für die spezifische Datei löschen, bevor sie geladen wird
-                delete require.cache[require.resolve(fullPath)];
-                const command = require(fullPath);
-                if ('data' in command && 'execute' in command) {
+                const command = (await import(pathToFileURL(fullPath))).default || (await import(pathToFileURL(fullPath)));
+                if (command?.data && command?.execute && command.data.description && typeof command.data.description === 'string') {
                     client.commands.set(command.data.name, command);
+                    logger.debug(`[Commands] Command geladen: ${command.data.name}`);
                 } else {
-                    logger.warn(`[WARNING] Der Befehl unter ${fullPath} hat fehlende "data" oder "execute" Eigenschaften.`);
+                    logger.warn(`[WARNING] Ungültiges Command (kein data/execute oder fehlende Beschreibung): ${fullPath}`);
                 }
-            } catch (error) {
-                logger.error(`[ERROR] Fehler beim Laden des Befehls ${fullPath}:`, error);
+            } catch (err) {
+                logger.error(`[ERROR] Fehler beim Laden: ${fullPath}`, err);
             }
         }
     }
 }
 
-// Cache leeren, bevor Commands und Events geladen werden
-clearModuleCache();
-readCommands(commandsPath); // Starte das Lesen der Commands
-
-
-// HIER MÜSSEN DIE EVENTS NACH DER CLIENT-INITIALISIERUNG REGISTRIERT WERDEN
-const eventsPath = path.join(__dirname, 'events');
-const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js') && file !== 'clientReady.js'); // NEU: clientReady.js ignorieren
-
-for (const file of eventFiles) {
-    const filePath = path.join(eventsPath, file);
-    try {
-        // Cache für die spezifische Event-Datei löschen, bevor sie geladen wird
-        delete require.cache[require.resolve(filePath)];
-        logger.debug(`[DEBUG] Lade Event-Datei: ${filePath}`);
-        const event = require(filePath);
-        if (event.once) {
-            client.once(event.name, (...args) => event.execute(...args, client));
-        } else {
-            client.on(event.name, (...args) => event.execute(...args, client));
+// Events laden
+async function loadEvents() {
+    const eventsDir = path.join(__dirname, 'events');
+    if (fs.existsSync(eventsDir)) {
+        for (const file of fs.readdirSync(eventsDir).filter((f) => f.endsWith('.js'))) {
+            try {
+                const event = (await import(pathToFileURL(path.join(eventsDir, file)))).default;
+                if (event?.name && typeof event.execute === 'function') {
+                    if (event.once) {
+                        client.once(event.name, (...args) => event.execute(...args, client));
+                    } else {
+                        client.on(event.name, (...args) => event.execute(...args, client));
+                    }
+                    logger.debug(`[Events] Event geladen: ${event.name}`);
+                } else {
+                    logger.warn(`[Events] Ungültiges Event-Modul: ${file}`);
+                }
+            } catch (err) {
+                logger.error(`[ERROR] Event-Load: ${file}`, err);
+            }
         }
-    } catch (error) {
-        logger.error(`[ERROR] Fehler beim Laden des Events ${filePath}:`, error);
-    }
-}
-
-// REST-Client für API-Anfragen
-const rest = new REST({ version: '10' }).setToken(token);
-
-// Funktion zum Deployment der Slash-Befehle
-async function deployCommands() {
-    const commands = client.commands.map(command => command.data.toJSON());
-
-    try {
-        logger.info(`Starte Aktualisierung von ${commands.length} Anwendungsbefehlen.`);
-
-        let data;
-        if (guildId) {
-            // Spezifisch für eine Gilde deployen (schneller für Tests)
-            logger.info(`Deploying commands to Guild ID: ${guildId}`);
-            data = await rest.put(
-                Routes.applicationGuildCommands(clientId, guildId),
-                { body: commands },
-            );
-        } else {
-            // Global deployen (dauert bis zu 1 Stunde, aber für alle Gilden verfügbar)
-            logger.info('Deploying commands globally...');
-            data = await rest.put(
-                Routes.applicationCommands(clientId),
-                { body: commands },
-            );
-        }
-
-        logger.info(`Erfolgreich ${data.length} Anwendungsbefehle geladen.`);
-    } catch (error) {
-        logger.error(`[ERROR] Fehler beim Deployment der Commands:`, error);
-    }
-}
-
-
-// NEU: Konsolidiertes Ready-Event
-client.once('ready', async () => {
-    // Diese Variable ist am Client-Objekt persistent und wird nicht durch Modul-Caching beeinflusst.
-    if (client.readyLogicExecuted) {
-        logger.warn(`⚠️ Das Ready-Event wurde erneut ausgelöst, aber die Hauptlogik wurde bereits ausgeführt. (PID: ${process.pid})`);
-        return; // Beende die Ausführung, um doppelte Initialisierung zu verhindern
-    }
-
-    client.readyLogicExecuted = true; // Markiere am Client-Objekt, dass die Logik jetzt ausgeführt wird
-
-    logger.info(`✅ Eingeloggt als ${client.user.tag} (PID: ${process.pid}) - Erste Ausführung der Ready-Logik`);
-    logger.debug(`[DEBUG] Client Ready Status: WebSocket Status = ${client.ws.status}, Ready Timestamp = ${client.readyTimestamp}`);
-    
-    logger.debug(`Geladene Commands: ${client.commands.map(cmd => cmd.data.name).join(', ')}`);
-
-    // Deployment nur wenn explizit gewünscht
-    if (process.env.DEPLOY_COMMANDS_ON_START === 'true') { // Prüfe auf String 'true'
-        logger.info('[Startup] DEPLOY_COMMANDS_ON_START ist aktiviert. Deploye Slash-Commands...');
-        await deployCommands();
     } else {
-        logger.info('[Startup] DEPLOY_COMMANDS_ON_START ist deaktiviert. Überspringe Deployment.');
+        logger.warn(`[Events] Ordner fehlt, überspringe: ${eventsDir}`);
+    }
+}
+
+// Commands deployen
+const rest = new REST({
+    version: '10'
+}).setToken(token);
+
+async function deployCommands() {
+    const commandsToDeploy = [];
+    for (const cmd of client.commands.values()) {
+        try {
+            commandsToDeploy.push(cmd.data.toJSON());
+        } catch (error) {
+            logger.error(`[Deploy] Fehler beim Serialisieren von Befehl '${cmd.data.name}':`, error);
+        }
     }
 
-    // NEU: Caching aller Einladungen für alle Gilden beim Bot-Start
-    logger.info('[Startup] Caching aller Gilden-Einladungen...');
+    try {
+        if (!commandsToDeploy.length) {
+            logger.warn('[Deploy] Keine Commands gefunden — überspringe Deploy.');
+            return;
+        }
+
+        if (guildId) {
+            await rest.put(Routes.applicationGuildCommands(clientId, guildId), {
+                body: commandsToDeploy
+            });
+            logger.info(`[Deploy] Commands an Guild ${guildId} gesendet.`);
+        } else {
+            await rest.put(Routes.applicationCommands(clientId), {
+                body: commandsToDeploy
+            });
+            logger.info('[Deploy] Commands global gesendet.');
+        }
+    } catch (error) {
+        logger.error('[Deploy] Fehler:', error);
+    }
+}
+
+// Ready
+client.once(Events.ClientReady, async (c) => {
+    if (client.readyLogicExecuted) return;
+    client.readyLogicExecuted = true;
+
+    logger.info(`✅ Eingeloggt als ${c.user.tag}`);
+
+    if (process.env.DEPLOY_COMMANDS_ON_START === 'true') {
+        await deployCommands();
+    }
+
     for (const guild of client.guilds.cache.values()) {
         try {
-            const invites = await guild.invites.fetch();
-            global.invites.set(guild.id, new Collection(invites.map(invite => [invite.code, invite])));
-            logger.debug(`[Startup] Caching für Gilde "${guild.name}" (${guild.id}) abgeschlossen. ${invites.size} Einladungen gefunden.`);
-        } catch (error) {
-            logger.warn(`[Startup] Konnte Einladungen für Gilde "${guild.name}" (${guild.id}) nicht cachen. Fehlende Berechtigungen? Fehler: ${error.message}`);
+            const invs = await guild.invites.fetch();
+            global.invites.set(guild.id, invs);
+        } catch (e) {
+            logger.warn(`[Startup] Einladungen für ${guild.name} nicht cachen: ${e.message}`);
         }
     }
-    logger.info('[Startup] Initiales Caching der Einladungen abgeschlossen.');
+    // Lade die Embed-Sessions hier und übergebe die client-Instanz
+    const embedsCommand = client.commands.get('embeds');
+    if (embedsCommand && embedsCommand.loadActiveEmbedSessions) {
+        await embedsCommand.loadActiveEmbedSessions(client);
+    }
+});
 
-
-    // Debug-Bereich für Guild-Permissions
-    if (guildId) {
-        try {
-            const guild = client.guilds.cache.get(guildId);
-            if (guild) {
-                const botMember = await guild.members.fetch(client.user.id);
-                const botPermissions = botMember.permissions;
-
-                logger.debug(`[DEBUG] Bot-Berechtigungen in Gilde '${guild.name}' (${guild.id}):`);
-                logger.debug(`   Hat 'ModerateMembers': ${botPermissions.has(PermissionsBitField.Flags.ModerateMembers)}`);
-                logger.debug(`   Hat 'ManageMessages': ${botPermissions.has(PermissionsBitField.Flags.ManageMessages)}`);
-                logger.debug(`   Hat 'Administrator': ${botPermissions.has(PermissionsBitField.Flags.Administrator)}`);
-            } else {
-                logger.warn(`[DEBUG] Gilde mit ID ${guildId} nicht im Cache gefunden.`);
-            }
-        } catch (error) {
-            logger.error(`[DEBUG] Fehler beim Abrufen der Bot-Berechtigungen:`, error);
+// Social Command inline registrieren
+client.commands.set('social', {
+    data: {
+        name: 'social',
+        description: 'Zeigt kombinierte Social-Media-Stats',
+        toJSON() {
+            return this;
         }
-    }
+    },
+    async execute(interaction) {
+        await interaction.deferReply();
+        const twitter = interaction.options?.getString?.('twitter');
+        const youtube = interaction.options?.getString?.('youtube');
+        const twitch = interaction.options?.getString?.('twitch');
 
-    // Voting & Embed-Cleanup
-    const votingCommand = client.commands.get('voting');
-    if (votingCommand?.restoreActiveVotes) {
-        await votingCommand.restoreActiveVotes(client);
-    }
+        const results = await getAllSocialStats({
+            twitter,
+            youtubeChannelId: youtube,
+            twitch
+        });
 
-    const embedCommand = client.commands.get('embeds');
-    if (embedCommand?.cleanupExpiredSessions) {
-        logger.info('[App] Führe einmalige Bereinigung abgelaufener Embed-Sitzungen aus...');
-        await embedCommand.cleanupExpiredSessions(client);
+        const lines = results.map(r => {
+            if (r.error) return `• ${r.platform}: ⚠️ ${r.error}`;
+            if (r.platform === 'Twitter') return `• Twitter (@${r.username}): ${r.followers} Follower`;
+            if (r.platform === 'YouTube') return `• YouTube (${r.channelTitle}): ${r.subscribers} Abos`;
+            if (r.platform === 'Twitch') return `• Twitch (${r.displayName}): ${r.live ? 'LIVE' : 'offline'}`;
+            return '• Unbekannte Plattform';
+        });
+
+        await interaction.editReply({
+            content: lines.join('\n')
+        });
     }
 });
 
-
-// Allgemeine Fehlerbehandlung für den Prozess
-process.on('unhandledRejection', (reason, promise) => {
-    logger.error('❌ Unerwarteter Promise-Fehler:', reason, promise);
+// Fehler-Handling & Cleanup
+process.on('unhandledRejection', (reason) => {
+    logger.error('❌ Promise-Fehler:', reason?.stack || reason);
+});
+process.on('uncaughtException', (err) => {
+    logger.error('❌ Exception:', err?.stack || err);
 });
 
-process.on('uncaughtException', (err, origin) => {
-    logger.error('❌ Unerwarteter Client-Fehler:', err, origin);
-    // Beenden Sie den Prozess, um sicherzustellen, dass keine beschädigten Zustände bestehen bleiben.
-    // In Produktionsumgebungen sollten Sie hier einen Prozessmanager (PM2, systemd) verwenden,
-    // um den Bot automatisch neu zu starten.
-    // process.exit(1); 
-});
+async function main() {
+    await loadTranslations();
+    await loadGuildLanguages();
+    await readCommands(path.join(__dirname, 'commands'));
+    await loadEvents(); // Rufe die neue Funktion auf, um Events zu laden
+    client.login(token);
+}
 
-// Graceful Shutdown bei SIGTERM (vom Watcher gesendet)
-process.on('SIGTERM', async () => {
-    logger.info('🛑 SIGTERM empfangen. Schließe Discord-Client...');
-    if (client && client.isReady()) {
-        await client.destroy(); // Meldet den Client von Discord ab
-        logger.info('✅ Discord-Client erfolgreich abgemeldet.');
-    } else {
-        logger.info('⚠️ Discord-Client war nicht bereit oder nicht vorhanden. Beende direkt.');
-    }
-    process.exit(0); // Beendet den Prozess
-});
-
-// Log vor dem Login-Versuch
-logger.debug('[DEBUG] Versuche Client-Login...');
-// Login des Bots
-client.login(token)
-    .then(() => logger.debug('[DEBUG] client.login() Promise erfolgreich aufgelöst.'))
-    .catch(error => {
-        logger.error(`[ERROR] Fehler beim Anmelden des Bots:`, error);
-        process.exit(1); // Beendet den Prozess, wenn die Anmeldung fehlschlägt
-    });
+main();

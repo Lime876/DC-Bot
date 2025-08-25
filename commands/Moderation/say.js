@@ -1,84 +1,106 @@
-const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder } = require('discord.js');
-const { getLogChannelId } = require('../../utils/config.js'); // Angenommen, du hast eine config.js für Log-Channels
+// commands/moderation/say.js
+import {
+  SlashCommandBuilder,
+  PermissionFlagsBits,
+  ChannelType,
+  EmbedBuilder,
+  MessageFlags
+} from 'discord.js';
+import { getLogChannelId } from '../../utils/config.js';
+import { getGuildLanguage, getTranslatedText } from '../../utils/languageUtils.js';
+import logger from '../../utils/logger.js';
 
-module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('say')
-        .setDescription('Lässt den Bot eine Nachricht in einem Kanal senden.')
-        .addStringOption(option =>
-            option.setName('message')
-                .setDescription('Die Nachricht, die gesendet werden soll.')
-                .setRequired(true))
-        .addChannelOption(option =>
-            option.setName('channel')
-                .setDescription('Der Kanal, in dem die Nachricht gesendet werden soll (Standard: aktueller Kanal).')
-                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement) // Nur Text- oder Ankündigungskanäle
-                .setRequired(false))
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages) // Nur Moderatoren/Admins
-        .setDMPermission(false), // Nicht in DMs verfügbar
+export default {
+  data: new SlashCommandBuilder()
+    .setName('say')
+    .setDescription('Lässt den Bot eine Nachricht in einem Kanal senden.')
+    .setDescriptionLocalizations({
+      de: getTranslatedText('de', 'say_command.DESCRIPTION'),
+      'en-US': getTranslatedText('en', 'say_command.DESCRIPTION'),
+    })
+    .addStringOption(option =>
+      option.setName('message')
+        .setDescription('Die Nachricht, die gesendet werden soll.')
+        .setDescriptionLocalizations({
+          de: getTranslatedText('de', 'say_command.MESSAGE_OPTION_DESCRIPTION'),
+          'en-US': getTranslatedText('en', 'say_command.MESSAGE_OPTION_DESCRIPTION'),
+        })
+        .setRequired(true))
+    .addChannelOption(option =>
+      option.setName('channel')
+        .setDescription('Der Kanal, in dem die Nachricht gesendet werden soll (Standard: aktueller Kanal).')
+        .setDescriptionLocalizations({
+          de: getTranslatedText('de', 'say_command.CHANNEL_OPTION_DESCRIPTION'),
+          'en-US': getTranslatedText('en', 'say_command.CHANNEL_OPTION_DESCRIPTION'),
+        })
+        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+        .setRequired(false))
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .setDMPermission(false),
 
-    category: 'Moderation', // Kategorie für den Befehl
+  category: 'Moderation',
 
-    async execute(interaction) {
-        const messageContent = interaction.options.getString('message');
-        const targetChannel = interaction.options.getChannel('channel') || interaction.channel;
-        const guildId = interaction.guild.id;
+  async execute(interaction) {
+    const lang = await getGuildLanguage(interaction.guildId);
+    const messageContent = interaction.options.getString('message');
+    const targetChannel = interaction.options.getChannel('channel') || interaction.channel;
+    const guildId = interaction.guild.id;
 
-        await interaction.deferReply({ ephemeral: true }); // Sofort antworten, um Timeout zu vermeiden
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
-        // Überprüfen, ob es ein Text- oder Ankündigungskanal ist
-        if (targetChannel.type !== ChannelType.GuildText && targetChannel.type !== ChannelType.GuildAnnouncement) {
-            return interaction.editReply({ content: '❌ Du kannst Nachrichten nur in Text- oder Ankündigungskanäle senden.', ephemeral: true });
+    // Überprüfen, ob es ein Text- oder Ankündigungskanal ist
+    if (targetChannel.type !== ChannelType.GuildText && targetChannel.type !== ChannelType.GuildAnnouncement) {
+      return interaction.editReply({ content: getTranslatedText(lang, 'say_command.INVALID_CHANNEL_TYPE') });
+    }
+
+    // Berechtigungen prüfen
+    const botPermissionsInChannel = targetChannel.permissionsFor(interaction.client.user);
+    if (!botPermissionsInChannel?.has(PermissionFlagsBits.SendMessages)) {
+      return interaction.editReply({
+        content: getTranslatedText(lang, 'say_command.BOT_MISSING_SEND_PERMISSIONS', { channelMention: targetChannel.toString() })
+      });
+    }
+
+    try {
+      await targetChannel.send(messageContent);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle(getTranslatedText(lang, 'say_command.SUCCESS_EMBED_TITLE'))
+        .setDescription(getTranslatedText(lang, 'say_command.SUCCESS_EMBED_DESCRIPTION', { channelMention: targetChannel.toString() }))
+        .addFields(
+          { name: getTranslatedText(lang, 'say_command.FIELD_CHANNEL'), value: `<#${targetChannel.id}>`, inline: true },
+          { name: getTranslatedText(lang, 'say_command.FIELD_MESSAGE_PREVIEW'), value: `\`\`\`\n${messageContent.substring(0, 1000)}\n\`\`\``, inline: false }
+        )
+        .setTimestamp();
+
+      await interaction.editReply({ embeds: [embed] });
+
+      // Optional: Log-Kanal
+      const logChannelId = getLogChannelId(guildId);
+      if (logChannelId) {
+        const logChannel = interaction.guild.channels.cache.get(logChannelId);
+        if (logChannel) {
+          const logEmbed = new EmbedBuilder()
+            .setColor(0x0099FF)
+            .setTitle(getTranslatedText(lang, 'say_command.LOG_EMBED_TITLE'))
+            .setDescription(getTranslatedText(lang, 'say_command.LOG_EMBED_DESCRIPTION', { userTag: interaction.user.tag }))
+            .addFields(
+              { name: getTranslatedText(lang, 'say_command.LOG_FIELD_CHANNEL'), value: `<#${targetChannel.id}>`, inline: true },
+              { name: getTranslatedText(lang, 'say_command.LOG_FIELD_SENT_BY'), value: `<@${interaction.user.id}>`, inline: true },
+              { name: getTranslatedText(lang, 'say_command.LOG_FIELD_MESSAGE'), value: messageContent.substring(0, 1024), inline: false }
+            )
+            .setTimestamp();
+          await logChannel.send({ embeds: [logEmbed] }).catch(error => {
+            logger.error(`[Say] Failed to send log message to channel ${logChannelId}: `, error);
+          });
         }
-
-        // Überprüfen, ob der Bot die Berechtigung hat, Nachrichten zu senden
-        const botPermissionsInChannel = targetChannel.permissionsFor(interaction.client.user);
-        if (!botPermissionsInChannel.has(PermissionFlagsBits.SendMessages)) {
-            return interaction.editReply({ content: `❌ Ich habe keine Berechtigung, Nachrichten in ${targetChannel} zu senden.`, ephemeral: true });
-        }
-
-        try {
-            await targetChannel.send(messageContent);
-
-            const embed = new EmbedBuilder()
-                .setColor(0x00FF00) // Grün
-                .setTitle('✅ Nachricht gesendet!')
-                .setDescription(`Die Nachricht wurde erfolgreich in ${targetChannel} gesendet.`)
-                .addFields(
-                    { name: 'Kanal', value: `<#${targetChannel.id}>`, inline: true },
-                    { name: 'Nachrichtenvorschau', value: `\`\`\`\n${messageContent.substring(0, 1000)}\n\`\`\``, inline: false } // Nur die ersten 1000 Zeichen
-                )
-                .setTimestamp();
-
-            await interaction.editReply({ embeds: [embed] });
-
-            // Optional: Log in einen Moderationskanal senden
-            const logChannelId = getLogChannelId(guildId);
-            if (logChannelId) {
-                const logChannel = interaction.guild.channels.cache.get(logChannelId);
-                if (logChannel) {
-                    const logEmbed = new EmbedBuilder()
-                        .setColor(0x0099FF) // Blau
-                        .setTitle('🗣️ Bot hat Nachricht gesendet')
-                        .setDescription(`**${interaction.user.tag}** hat den Bot eine Nachricht senden lassen.`)
-                        .addFields(
-                            { name: 'Kanal', value: `<#${targetChannel.id}>`, inline: true },
-                            { name: 'Gesendet von', value: `<@${interaction.user.id}>`, inline: true },
-                            { name: 'Nachricht', value: messageContent.substring(0, 1024), inline: false } // Max. Länge für Embed-Feld
-                        )
-                        .setTimestamp();
-                    await logChannel.send({ embeds: [logEmbed] }).catch(error => {
-                        console.error("Failed to send say command log message: ", error);
-                    });
-                }
-            }
-
-        } catch (error) {
-            console.error('Fehler beim Senden der Nachricht mit /say:', error);
-            await interaction.editReply({
-                content: '❌ Es gab einen Fehler beim Senden der Nachricht. Bitte stelle sicher, dass der Bot die nötigen Berechtigungen hat.',
-                ephemeral: true,
-            });
-        }
-    },
+      }
+    } catch (error) {
+      logger.error(`[Say] Fehler beim Senden der Nachricht mit /say in Gilde ${interaction.guild.id}:`, error);
+      await interaction.editReply({
+        content: getTranslatedText(lang, 'bot_messages.ERROR_OCCURRED_UNEXPECTED', { errorMessage: error.message }),
+      });
+    }
+  }
 };

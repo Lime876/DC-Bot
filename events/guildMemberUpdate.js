@@ -1,106 +1,106 @@
-// events/guildMemberUpdate.js
-const { Events, EmbedBuilder } = require('discord.js');
-const { getLogChannelId } = require('../utils/config.js');
-const { getGuildLanguage, getTranslatedText } = require('../utils/languageUtils');
-const logger = require('../utils/logger');
+import { Events, EmbedBuilder } from 'discord.js';
+import { getLogChannelId } from '../utils/config.js';
+import { getGuildLanguage, getTranslatedText } from '../utils/languageUtils.js';
+import logger from '../utils/logger.js';
 
-module.exports = {
-    name: Events.GuildMemberUpdate,
-    async execute(oldMember, newMember) {
-        // Ignoriere Bots
-        if (oldMember.user.bot) return;
+export default {
+  name: Events.GuildMemberUpdate,
+  async execute(oldMember, newMember) {
+    if (oldMember.user.bot) return;
 
-        const guild = newMember.guild;
-        const lang = await getGuildLanguage(guild.id);
-        const logChannelId = getLogChannelId(guild.id, 'member_update');
+    const guild = newMember.guild;
+    const lang = await getGuildLanguage(guild.id);
+    const logChannelId = getLogChannelId(guild.id, 'member_update');
+    if (!logChannelId) return;
 
-        if (!logChannelId) {
-            // logger.debug(`[MemberUpdate Event] Kein Log-Kanal für 'member_update' in Gilde ${guild.id} konfiguriert. (PID: ${process.pid})`);
-            return;
-        }
+    const logChannel = guild.channels.cache.get(logChannelId);
+    if (!logChannel || !logChannel.isTextBased()) {
+      logger.warn(`[MemberUpdate] Ungültiger Log-Kanal ${logChannelId} in Gilde ${guild.id}.`);
+      return;
+    }
 
-        const logChannel = guild.channels.cache.get(logChannelId);
-        if (!logChannel || !logChannel.isTextBased()) {
-            logger.warn(`[MemberUpdate Event] Konfigurierter Log-Kanal ${logChannelId} für Gilde ${guild.id} ist ungültig oder kein Textkanal. (PID: ${process.pid})`);
-            return;
-        }
+    const userTag = newMember.user.tag;
+    const userId = newMember.user.id;
 
-        const userTag = newMember.user.tag;
-        const userId = newMember.user.id;
+    // Rollenänderungen
+    const oldRoles = oldMember.roles.cache;
+    const newRoles = newMember.roles.cache;
+    const addedRoles = newRoles.filter(r => !oldRoles.has(r.id));
+    const removedRoles = oldRoles.filter(r => !newRoles.has(r.id));
 
-        // --- 1. Rollenänderungen protokollieren ---
-        const oldRoles = oldMember.roles.cache;
-        const newRoles = newMember.roles.cache;
+    if (addedRoles.size || removedRoles.size) {
+      const embed = new EmbedBuilder()
+        .setColor(0xFFA500)
+        .setTitle(getTranslatedText(lang, 'member_update.LOG_TITLE_ROLES_UPDATED'))
+        .setDescription(getTranslatedText(lang, 'member_update.LOG_DESCRIPTION_ROLES_UPDATED', { userTag, userId }))
+        .setThumbnail(newMember.user.displayAvatarURL({ dynamic: true }))
+        .setTimestamp()
+        .addFields(
+          {
+            name: getTranslatedText(lang, 'member_update.FIELD_ROLES_ADDED'),
+            value: addedRoles.size ? addedRoles.map(r => `<@&${r.id}>`).join(', ') : getTranslatedText(lang, 'member_update.NO_ROLES_ADDED'),
+            inline: false
+          },
+          {
+            name: getTranslatedText(lang, 'member_update.FIELD_ROLES_REMOVED'),
+            value: removedRoles.size ? removedRoles.map(r => `<@&${r.id}>`).join(', ') : getTranslatedText(lang, 'member_update.NO_ROLES_REMOVED'),
+            inline: false
+          }
+        );
 
-        const addedRoles = newRoles.filter(role => !oldRoles.has(role.id));
-        const removedRoles = oldRoles.filter(role => !newRoles.has(role.id));
+      try {
+        await logChannel.send({ embeds: [embed] });
+        logger.info(`[MemberUpdate] Rollen von ${userTag} aktualisiert in ${guild.name}.`);
+      } catch (error) {
+        logger.error(`[MemberUpdate] Fehler beim Rollen-Log für ${userTag} (${userId}):`, error);
+      }
+    }
 
-        if (addedRoles.size > 0 || removedRoles.size > 0) {
-            const embed = new EmbedBuilder()
-                .setColor(0xFFA500) // Orange für Rollenänderungen
-                .setTitle(getTranslatedText(lang, 'member_update.LOG_TITLE_ROLES_UPDATED'))
-                .setDescription(getTranslatedText(lang, 'member_update.LOG_DESCRIPTION_ROLES_UPDATED', { userTag: userTag, userId: userId }))
-                .setThumbnail(newMember.user.displayAvatarURL({ dynamic: true }))
-                .setTimestamp();
+    // Spitznamenänderung
+    if (oldMember.nickname !== newMember.nickname) {
+      const embed = new EmbedBuilder()
+        .setColor(0x00BFFF)
+        .setTitle(getTranslatedText(lang, 'member_update.LOG_TITLE_NICKNAME_UPDATED'))
+        .setDescription(getTranslatedText(lang, 'member_update.LOG_DESCRIPTION_NICKNAME_UPDATED', { userTag, userId }))
+        .setThumbnail(newMember.user.displayAvatarURL({ dynamic: true }))
+        .addFields(
+          { name: getTranslatedText(lang, 'member_update.FIELD_OLD_NICKNAME'), value: oldMember.nickname || getTranslatedText(lang, 'member_update.NO_OLD_NICKNAME'), inline: true },
+          { name: getTranslatedText(lang, 'member_update.FIELD_NEW_NICKNAME'), value: newMember.nickname || getTranslatedText(lang, 'member_update.NO_NEW_NICKNAME'), inline: true }
+        )
+        .setTimestamp();
 
-            if (addedRoles.size > 0) {
-                embed.addFields({ 
-                    name: getTranslatedText(lang, 'member_update.FIELD_ROLES_ADDED'), 
-                    value: addedRoles.map(role => `<@&${role.id}>`).join(', '), 
-                    inline: false 
-                });
-            } else {
-                embed.addFields({ 
-                    name: getTranslatedText(lang, 'member_update.FIELD_ROLES_ADDED'), 
-                    value: getTranslatedText(lang, 'member_update.NO_ROLES_ADDED'), 
-                    inline: false 
-                });
-            }
+      try {
+        await logChannel.send({ embeds: [embed] });
+        logger.info(`[MemberUpdate] Spitzname von ${userTag} aktualisiert in ${guild.name}.`);
+      } catch (error) {
+        logger.error(`[MemberUpdate] Fehler beim Spitznamen-Log für ${userTag} (${userId}):`, error);
+      }
+    }
 
-            if (removedRoles.size > 0) {
-                embed.addFields({ 
-                    name: getTranslatedText(lang, 'member_update.FIELD_ROLES_REMOVED'), 
-                    value: removedRoles.map(role => `<@&${role.id}>`).join(', '), 
-                    inline: false 
-                });
-            } else {
-                embed.addFields({ 
-                    name: getTranslatedText(lang, 'member_update.FIELD_ROLES_REMOVED'), 
-                    value: getTranslatedText(lang, 'member_update.NO_ROLES_REMOVED'), 
-                    inline: false 
-                });
-            }
+    // Timeout-Status
+    if (oldMember.communicationDisabledUntil !== newMember.communicationDisabledUntil) {
+      const isTimedOut = newMember.communicationDisabledUntil !== null;
+      const timeoutReason = isTimedOut ? (newMember.communicationDisabledUntilReason || getTranslatedText(lang, 'member_update.NO_REASON_PROVIDED')) : '';
+      const timeoutDuration = isTimedOut ? `<t:${Math.floor(newMember.communicationDisabledUntil.getTime() / 1000)}:R>` : '';
 
-            try {
-                await logChannel.send({ embeds: [embed] });
-                logger.info(`[MemberUpdate Event] Rollen von ${userTag} aktualisiert in Gilde ${guild.name}. (PID: ${process.pid})`);
-            } catch (error) {
-                logger.error(`[MemberUpdate Event] Fehler beim Senden des Rollen-Update-Logs für ${userTag}:`, error);
-            }
-        }
+      const embed = new EmbedBuilder()
+        .setColor(isTimedOut ? 0xFFA500 : 0x00FF00)
+        .setTitle(isTimedOut ? getTranslatedText(lang, 'member_update.LOG_TITLE_TIMED_OUT') : getTranslatedText(lang, 'member_update.LOG_TITLE_UNTIMED_OUT'))
+        .setDescription(getTranslatedText(lang, 'member_update.LOG_DESCRIPTION_TIMEOUT_STATUS', { userTag, userId }))
+        .setThumbnail(newMember.user.displayAvatarURL({ dynamic: true }))
+        .addFields(
+          { name: getTranslatedText(lang, 'member_update.FIELD_TIMEOUT_STATUS'), value: isTimedOut ? getTranslatedText(lang, 'general.YES') : getTranslatedText(lang, 'general.NO'), inline: true },
+          { name: getTranslatedText(lang, 'member_update.FIELD_TIMEOUT_DURATION'), value: timeoutDuration || getTranslatedText(lang, 'general.NOT_APPLICABLE'), inline: true },
+          { name: getTranslatedText(lang, 'member_update.FIELD_TIMEOUT_REASON'), value: timeoutReason || getTranslatedText(lang, 'general.NOT_AVAILABLE'), inline: false }
+        )
+        .setTimestamp();
 
-        // --- 2. Spitznamenänderungen protokollieren ---
-        if (oldMember.nickname !== newMember.nickname) {
-            const oldNickname = oldMember.nickname || getTranslatedText(lang, 'member_update.NO_OLD_NICKNAME');
-            const newNickname = newMember.nickname || getTranslatedText(lang, 'member_update.NO_NEW_NICKNAME');
-
-            const embed = new EmbedBuilder()
-                .setColor(0x00BFFF) // Helles Blau für Spitznamenänderungen
-                .setTitle(getTranslatedText(lang, 'member_update.LOG_TITLE_NICKNAME_UPDATED'))
-                .setDescription(getTranslatedText(lang, 'member_update.LOG_DESCRIPTION_NICKNAME_UPDATED', { userTag: userTag, userId: userId }))
-                .setThumbnail(newMember.user.displayAvatarURL({ dynamic: true }))
-                .addFields(
-                    { name: getTranslatedText(lang, 'member_update.FIELD_OLD_NICKNAME'), value: oldNickname, inline: true },
-                    { name: getTranslatedText(lang, 'member_update.FIELD_NEW_NICKNAME'), value: newNickname, inline: true }
-                )
-                .setTimestamp();
-
-            try {
-                await logChannel.send({ embeds: [embed] });
-                logger.info(`[MemberUpdate Event] Spitzname von ${userTag} aktualisiert in Gilde ${guild.name}. (PID: ${process.pid})`);
-            } catch (error) {
-                logger.error(`[MemberUpdate Event] Fehler beim Senden des Spitznamen-Update-Logs für ${userTag}:`, error);
-            }
-        }
-    },
+      try {
+        await logChannel.send({ embeds: [embed] });
+        logger.info(`[MemberUpdate] Timeout-Status von ${userTag} geändert in ${guild.name}.`);
+      } catch (error) {
+        logger.error(`[MemberUpdate] Fehler beim Timeout-Log für ${userTag} (${userId}):`, error);
+      }
+    }
+  }
 };

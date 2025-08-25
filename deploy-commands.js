@@ -1,68 +1,57 @@
-require('dotenv').config();
+// deploy-commands.js (ESM-Version)
 
-const { REST, Routes } = require('discord.js');
-const fs = require('node:fs');
-const path = require('node:path');
+import 'dotenv/config';
+import { REST, Routes } from 'discord.js';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const clientId = process.env.DISCORD_CLIENT_ID;
+const guildId = process.env.DISCORD_GUILD_ID;
 const token = process.env.DISCORD_BOT_TOKEN;
 
 if (!clientId || !token) {
-    console.error('FEHLER: DISCORD_CLIENT_ID oder DISCORD_BOT_TOKEN ist in der .env-Datei nicht definiert.');
+    console.error('FEHLER: DISCORD_CLIENT_ID oder DISCORD_BOT_TOKEN fehlt in der .env-Datei.');
     process.exit(1);
 }
 
 const commands = [];
-const commandsPath = path.join(__dirname, 'commands');
+const commandsPath = path.join(path.resolve(), 'commands');
 
-function readCommands(dir) {
+async function loadCommands(dir) {
     const files = fs.readdirSync(dir, { withFileTypes: true });
-
     for (const file of files) {
         const fullPath = path.join(dir, file.name);
         if (file.isDirectory()) {
-            readCommands(fullPath);
+            await loadCommands(fullPath);
         } else if (file.isFile() && file.name.endsWith('.js')) {
-            const command = require(fullPath);
-            if ('data' in command && 'execute' in command) {
-                commands.push(command.data.toJSON());
-            } else {
-                console.log(`[WARNING] Der Befehl unter ${fullPath} hat fehlende "data" oder "execute" Eigenschaften.`);
+            try {
+                const command = await import(fullPath);
+                if (command.default?.data && command.default?.execute) {
+                    commands.push(command.default.data.toJSON());
+                } else {
+                    console.warn(`[WARN] Ungültiger Command in ${fullPath}`);
+                }
+            } catch (err) {
+                console.error(`[ERROR] Fehler beim Laden von ${fullPath}:`, err);
             }
         }
     }
 }
 
-readCommands(commandsPath);
+await loadCommands(commandsPath);
 
-const rest = new REST().setToken(token);
+const rest = new REST({ version: '10' }).setToken(token);
 
-(async () => {
-    try {
-        console.log(`Lösche alle globalen Slash-Commands...`);
-        // Alle globalen Commands löschen (leere Liste)
-        await rest.put(
-            Routes.applicationCommands(clientId),
-            { body: [] }
-        );
-        console.log(`Alle globalen Slash-Commands gelöscht.`);
-
-        console.log(`Registriere ${commands.length} neue globale Slash-Commands...`);
-        // Neue Commands registrieren
-        const data = await rest.put(
-            Routes.applicationCommands(clientId),
-            { body: commands }
-        );
-        console.log(`Erfolgreich ${data.length} globale Slash-Commands neu geladen.`);
-
-    } catch (error) {
-        console.error(error);
-        if (error.status === 401) {
-            console.error('Möglicher Fehler: Bot-Token ist ungültig oder Client ID falsch.');
-        } else if (error.status === 403) {
-            console.error('Möglicher Fehler: Der Bot hat nicht die Berechtigung, Slash Commands zu registrieren (z.B. fehlender "applications.commands" OAuth2 Scope).');
-        } else if (error.status === 404) {
-            console.error('Möglicher Fehler: Client ID ist ungültig.');
-        }
+try {
+    if (guildId) {
+        console.log(`[DEPLOY] Registriere ${commands.length} Guild-Commands für Guild ${guildId}...`);
+        await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands });
+        console.log(`[DEPLOY] Erfolgreich alle Guild-Commands neu geladen.`);
+    } else {
+        console.log(`[DEPLOY] Registriere ${commands.length} globale Commands...`);
+        await rest.put(Routes.applicationCommands(clientId), { body: commands });
+        console.log(`[DEPLOY] Erfolgreich alle globalen Commands neu geladen.`);
     }
-})();
+} catch (error) {
+    console.error('[DEPLOY] Fehler beim Registrieren:', error);
+}

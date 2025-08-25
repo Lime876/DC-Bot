@@ -1,36 +1,23 @@
-// events/messageUpdate.js
-const { Events, EmbedBuilder } = require('discord.js');
-const { getLogChannelId } = require('../utils/config.js');
-const { getGuildLanguage, getTranslatedText } = require('../utils/languageUtils');
-const logger = require('../utils/logger');
+import { Events, EmbedBuilder } from 'discord.js';
+import { getLogChannelId } from '../utils/config.js';
+import { getGuildLanguage, getTranslatedText } from '../utils/languageUtils.js';
+import logger from '../utils/logger.js';
 
-module.exports = {
+export default {
     name: Events.MessageUpdate,
     async execute(oldMessage, newMessage) {
-        // Ignoriere Nachrichten von Bots oder wenn die Nachricht nicht in einer Gilde ist
-        if (oldMessage.author.bot || !oldMessage.guild) {
-            // logger.debug(`[Message Update DEBUG] Nachricht ID ${oldMessage.id}: Ignoriert (keine Gilde oder Bot-Nachricht). (PID: ${process.pid})`);
-            return;
-        }
-
-        // Ignoriere, wenn der Inhalt der Nachricht nicht geändert wurde
-        if (oldMessage.content === newMessage.content) {
-            // logger.debug(`[Message Update DEBUG] Nachricht ID ${oldMessage.id}: Inhalt nicht geändert. (PID: ${process.pid})`);
-            return;
-        }
+        if (!oldMessage.guild || oldMessage.author?.bot) return;
+        if (oldMessage.content === newMessage.content) return;
 
         const guild = newMessage.guild;
         const lang = await getGuildLanguage(guild.id);
-        const logChannelId = getLogChannelId(guild.id, 'message_edit'); // Hole den Log-Kanal für message_edit
 
-        if (!logChannelId) {
-            // logger.debug(`[Message Update Event] Kein Log-Kanal für 'message_edit' in Gilde ${guild.id} konfiguriert. (PID: ${process.pid})`);
-            return; // Kein Log-Kanal konfiguriert
-        }
+        const logChannelId = getLogChannelId(guild.id, 'message_edit');
+        if (!logChannelId) return;
 
         const logChannel = guild.channels.cache.get(logChannelId);
-        if (!logChannel || !logChannel.isTextBased()) {
-            logger.warn(`[Message Update Event] Konfigurierter Log-Kanal ${logChannelId} für Gilde ${guild.id} ist ungültig oder kein Textkanal. (PID: ${process.pid})`);
+        if (!logChannel?.isTextBased()) {
+            logger.warn(`[Message Update] Ungültiger Log-Kanal (${logChannelId}) in Gilde ${guild.id}. (PID: ${process.pid})`);
             return;
         }
 
@@ -42,21 +29,31 @@ module.exports = {
         const newContent = newMessage.content || getTranslatedText(lang, 'message_edit.NO_CONTENT');
 
         const embed = new EmbedBuilder()
-            .setColor(0x0099FF) // Blau für bearbeitete Nachrichten
+            .setColor(0x0099FF)
             .setTitle(getTranslatedText(lang, 'message_edit.LOG_TITLE'))
-            .setDescription(getTranslatedText(lang, 'message_edit.LOG_DESCRIPTION', { authorTag: authorTag, authorId: authorId, channelMention: channelMention }))
+            .setDescription(getTranslatedText(lang, 'message_edit.LOG_DESCRIPTION', { authorTag, authorId, channelMention }))
             .addFields(
-                { name: getTranslatedText(lang, 'message_edit.FIELD_OLD_CONTENT'), value: oldContent.substring(0, 1024), inline: false }, // Max. 1024 Zeichen für Feldwert
-                { name: getTranslatedText(lang, 'message_edit.FIELD_NEW_CONTENT'), value: newContent.substring(0, 1024), inline: false }
+                {
+                    name: getTranslatedText(lang, 'message_edit.FIELD_OLD_CONTENT'),
+                    value: oldContent.length > 1024 ? oldContent.slice(0, 1021) + '...' : oldContent,
+                    inline: false
+                },
+                {
+                    name: getTranslatedText(lang, 'message_edit.FIELD_NEW_CONTENT'),
+                    value: newContent.length > 1024 ? newContent.slice(0, 1021) + '...' : newContent,
+                    inline: false
+                }
             )
             .setTimestamp()
-            .setFooter({ text: `Nachricht ID: ${oldMessage.id}` });
+            .setFooter({
+                text: getTranslatedText(lang, 'message_edit.FOOTER_MESSAGE_ID', { messageId: oldMessage.id })
+            });
 
         try {
             await logChannel.send({ embeds: [embed] });
-            logger.info(`[Message Update Event] Nachricht von ${authorTag} in ${channelMention} bearbeitet. (PID: ${process.pid})`);
+            logger.info(`[Message Update] Nachricht von ${authorTag} in ${channelMention} bearbeitet. (PID: ${process.pid})`);
         } catch (error) {
-            logger.error(`[Message Update Event] Fehler beim Senden des Nachrichten-Update-Logs für ${authorTag}:`, error);
+            logger.error(`[Message Update] Fehler beim Senden des Logs für ${authorTag} in ${guild.id}:`, error);
         }
     },
 };

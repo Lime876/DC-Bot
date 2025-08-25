@@ -1,1 +1,18 @@
-{}
+{
+  "guildId": "1269722310567530650",
+  "setupChannelId": "1381302996540981309",
+  "supportRoleId": "1269722524300738651",
+  "ticketCategoryId": "1368538676212006992",
+  "ticketMessageId": "1382762903761064036",
+  "ticketWelcomeTitle": "fgg",
+  "ticketWelcomeDescription": "gfgdfg",
+  "transcriptChannelId": "1371843467168452619",
+  "1269722310567530650": {
+    "setupChannelId": "1362226825039974470",
+    "ticketCategoryId": "1269722311439810562",
+    "supportRoleId": "1372306457810309241",
+    "transcriptChannelId": "1371843467168452619",
+    "ticketWelcomeTitle": "hallo",
+    "ticketWelcomeDescription": "hallo"
+  }
+}
